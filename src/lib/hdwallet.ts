@@ -3,6 +3,12 @@
 // EVM chains share the same address; BTC uses BIP84 native segwit (bech32).
 // AES-encrypted local storage via crypto-js.
 
+// Ensure Buffer is available globally for bip39/bitcoinjs-lib (they expect Node's Buffer).
+import { Buffer } from "buffer";
+if (typeof globalThis !== "undefined" && !(globalThis as any).Buffer) {
+  (globalThis as any).Buffer = Buffer;
+}
+
 import * as bip39 from "bip39";
 import * as bitcoin from "bitcoinjs-lib";
 import { BIP32Factory } from "bip32";

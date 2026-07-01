@@ -11,6 +11,7 @@ import {
   walletAddressFor,
 } from "@/lib/wallet-auth";
 import { useWalletSession } from "@/hooks/useWalletSession";
+import { fetchBalance, type Balance } from "@/lib/balances";
 
 // NOTE: All wallet code is client-only. We dynamic-import to keep the SSR bundle clean.
 
@@ -276,6 +277,19 @@ function ImportForm({ onSubmit, validate }: {
 function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => void }) {
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [balances, setBalances] = useState<Record<string, Balance | "loading">>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    setBalances({});
+    for (const a of wallet.addresses) {
+      setBalances((b) => ({ ...b, [a.chain]: "loading" }));
+      fetchBalance(a.chain, a.address).then((bal) => {
+        if (!cancelled) setBalances((b) => ({ ...b, [a.chain]: bal }));
+      });
+    }
+    return () => { cancelled = true; };
+  }, [wallet.id]);
 
   const copy = async (text: string, key: string) => {
     try {
@@ -387,6 +401,19 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
               </div>
               <p className="mt-3 font-mono text-xs break-all text-muted-foreground">{a.address}</p>
               <p className="mt-2 text-[10px] font-mono text-muted-foreground/70">{a.path}</p>
+              <div className="mt-3 flex items-center justify-between border-t border-white/5 pt-3">
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Balance</span>
+                <span className="font-mono text-sm">
+                  {balances[a.chain] === "loading" || balances[a.chain] === undefined ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  ) : (
+                    <>
+                      {(balances[a.chain] as Balance).amount.toFixed(6)}{" "}
+                      <span className="text-muted-foreground">{(balances[a.chain] as Balance).symbol}</span>
+                    </>
+                  )}
+                </span>
+              </div>
             </div>
           ))}
         </div>

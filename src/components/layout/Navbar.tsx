@@ -1,9 +1,10 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LogOut, Menu, User, X, Zap } from "lucide-react";
+import { LogOut, Menu, User, X } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useWalletSession } from "@/hooks/useWalletSession";
 import { clearSession } from "@/lib/wallet-auth";
+import logoAsset from "@/assets/primecapital-logo.png.asset.json";
 
 const NAV = [
   { to: "/", label: "Home" },
@@ -22,9 +23,11 @@ export function Navbar() {
       <div className="glass border-b border-white/5">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-2 group">
-            <span className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-[image:var(--gradient-brand)] shadow-glow">
-              <Zap className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
-            </span>
+            <img
+              src={logoAsset.url}
+              alt="PrimeCapital"
+              className="h-9 w-9 rounded-lg object-contain shadow-glow"
+            />
             <span className="font-display text-lg font-semibold tracking-tight">
               Prime<span className="text-gradient">Capital</span>
             </span>
