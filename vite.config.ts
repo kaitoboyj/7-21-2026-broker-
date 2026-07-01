@@ -10,6 +10,7 @@ export default defineConfig({
       nodePolyfills({
         include: ["buffer", "crypto", "stream", "util", "events"],
         globals: { Buffer: true, global: true, process: true },
+        protocolImports: true,
       }),
     ],
   },
