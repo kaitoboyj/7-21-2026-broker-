@@ -1,24 +1,311 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowUpRight, BarChart3, Lock, Rocket, ShieldCheck, Sparkles, Wallet2, Zap } from "lucide-react";
+import { MarketTicker } from "@/components/MarketTicker";
+import { Sparkline } from "@/components/Sparkline";
+import { marketsQuery, formatUSD, formatCompact, formatPct } from "@/lib/prices";
+import { cn } from "@/lib/utils";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
-  component: Index,
+  component: HomePage,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
+function HomePage() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <>
+      <Hero />
+      <MarketTicker />
+      <TrendingSection />
+      <FeatureGrid />
+      <StatsBand />
+      <CTASection />
+    </>
+  );
+}
+
+function Hero() {
+  return (
+    <section className="relative overflow-hidden">
+      <div className="absolute inset-0 -z-10" style={{ backgroundImage: "var(--gradient-hero)" }} />
+      <div className="absolute inset-0 -z-10 grid-bg opacity-60" />
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 pb-24 md:pt-28 md:pb-32">
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="inline-flex items-center gap-2 rounded-full glass px-3 py-1 text-xs font-medium text-muted-foreground">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-success animate-pulse-dot" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+            </span>
+            Live markets · Real-time BIP39 wallets
+          </div>
+          <h1 className="mt-6 font-display text-5xl md:text-7xl font-semibold leading-[1.02] tracking-tight">
+            Trade crypto like a{" "}
+            <span className="text-gradient">professional.</span>
+            <br />
+            Custody it like a paranoid.
+          </h1>
+          <p className="mx-auto mt-6 max-w-xl text-lg text-muted-foreground">
+            NovaX combines an institutional trading terminal with a browser-native HD wallet.
+            Real prices. Real keys. No middleman.
+          </p>
+          <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              to="/trade"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[image:var(--gradient-brand)] px-6 py-3 text-sm font-semibold text-primary-foreground shadow-glow hover:opacity-90 transition"
+            >
+              Launch Terminal <ArrowUpRight className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/wallet"
+              className="inline-flex items-center justify-center gap-2 rounded-lg glass-strong px-6 py-3 text-sm font-semibold hover:bg-white/10 transition"
+            >
+              <Wallet2 className="h-4 w-4" /> Create a Wallet
+            </Link>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            BIP39 · BIP32 · BIP44 · BIP84 · AES-encrypted local storage
+          </p>
+        </div>
+
+        <HeroPreview />
+      </div>
+    </section>
+  );
+}
+
+function HeroPreview() {
+  const { data } = useQuery(marketsQuery(5));
+  const coins = data ?? [];
+  return (
+    <div className="relative mx-auto mt-16 max-w-5xl">
+      <div className="absolute -inset-x-20 -top-10 h-64 bg-[image:var(--gradient-brand)] opacity-20 blur-3xl -z-10" />
+      <div className="glass-strong rounded-2xl p-4 md:p-6 shadow-elev">
+        <div className="flex items-center justify-between px-2 pb-4">
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-destructive/70" />
+              <span className="h-2.5 w-2.5 rounded-full bg-warning/70" />
+              <span className="h-2.5 w-2.5 rounded-full bg-success/70" />
+            </div>
+            <span className="ml-3 text-xs text-muted-foreground font-mono">novax.terminal / BTC-USDT</span>
+          </div>
+          <div className="hidden sm:flex gap-1 text-xs text-muted-foreground">
+            {["1m", "5m", "15m", "1H", "4H", "1D"].map((t, i) => (
+              <span key={t} className={cn("rounded px-2 py-1", i === 3 && "bg-white/10 text-foreground")}>
+                {t}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-[1fr_260px]">
+          <div className="rounded-xl bg-black/40 p-4 h-72 md:h-80 relative overflow-hidden border border-white/5">
+            {coins[0] && (
+              <div className="absolute inset-0 flex flex-col p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-muted-foreground">BTC / USDT</p>
+                    <p className="mt-1 font-display text-4xl font-semibold">{formatUSD(coins[0].current_price)}</p>
+                    <p className={cn("mt-1 text-sm font-mono", coins[0].price_change_percentage_24h >= 0 ? "text-success" : "text-destructive")}>
+                      {formatPct(coins[0].price_change_percentage_24h)} · 24h
+                    </p>
+                  </div>
+                  <div className="text-right text-xs text-muted-foreground space-y-1">
+                    <p>Vol · {formatCompact(coins[0].total_volume)}</p>
+                    <p>Cap · {formatCompact(coins[0].market_cap)}</p>
+                  </div>
+                </div>
+                <div className="mt-auto -mx-5 -mb-5">
+                  <Sparkline
+                    data={coins[0].sparkline_in_7d?.price ?? []}
+                    up={coins[0].price_change_percentage_24h >= 0}
+                    width={800}
+                    height={140}
+                    className="w-full h-36"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="rounded-xl bg-black/30 border border-white/5 divide-y divide-white/5">
+            {coins.slice(0, 5).map((c) => {
+              const up = c.price_change_percentage_24h >= 0;
+              return (
+                <div key={c.id} className="flex items-center gap-3 px-3 py-3">
+                  <img src={c.image} alt="" className="h-6 w-6 rounded-full" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{c.symbol.toUpperCase()}</p>
+                    <p className="text-xs text-muted-foreground truncate">{c.name}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-mono">{formatUSD(c.current_price)}</p>
+                    <p className={cn("text-xs font-mono", up ? "text-success" : "text-destructive")}>
+                      {formatPct(c.price_change_percentage_24h)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function TrendingSection() {
+  const { data, isLoading } = useQuery(marketsQuery(8));
+  const coins = data ?? [];
+  return (
+    <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
+      <div className="flex items-end justify-between mb-8">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-primary/90 font-medium">Live Markets</p>
+          <h2 className="mt-2 font-display text-3xl md:text-4xl font-semibold">Trending right now</h2>
+        </div>
+        <Link to="/markets" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+          All markets <ArrowUpRight className="h-4 w-4" />
+        </Link>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {(isLoading ? Array.from({ length: 8 }) : coins).map((c: any, i) => (
+          <TrendingCard key={c?.id ?? i} coin={c} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TrendingCard({ coin }: { coin: any }) {
+  if (!coin) {
+    return <div className="glass rounded-xl h-40 animate-pulse" />;
+  }
+  const up = coin.price_change_percentage_24h >= 0;
+  return (
+    <Link
+      to="/trade"
+      className="group glass rounded-xl p-4 hover:bg-white/[.06] transition-all hover:-translate-y-0.5 relative overflow-hidden"
+    >
+      <div className="flex items-center gap-3">
+        <img src={coin.image} alt="" className="h-8 w-8 rounded-full" />
+        <div>
+          <p className="text-sm font-semibold">{coin.symbol.toUpperCase()}</p>
+          <p className="text-xs text-muted-foreground">{coin.name}</p>
+        </div>
+      </div>
+      <div className="mt-3 flex items-end justify-between">
+        <p className="font-display text-xl font-semibold">{formatUSD(coin.current_price)}</p>
+        <span className={cn("text-xs font-mono px-1.5 py-0.5 rounded", up ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive")}>
+          {formatPct(coin.price_change_percentage_24h)}
+        </span>
+      </div>
+      <div className="mt-3 -mx-4 -mb-4">
+        <Sparkline data={coin.sparkline_in_7d?.price ?? []} up={up} width={280} height={56} className="w-full h-14" />
+      </div>
+    </Link>
+  );
+}
+
+const FEATURES = [
+  {
+    icon: BarChart3,
+    title: "Pro trading terminal",
+    body: "Full TradingView charts, 50+ indicators, drawing tools, and multiple timeframes.",
+  },
+  {
+    icon: Wallet2,
+    title: "Browser-native HD wallets",
+    body: "BIP39 mnemonics, BIP32/44/84 derivation for BTC, ETH, and every EVM chain.",
+  },
+  {
+    icon: Lock,
+    title: "Non-custodial by default",
+    body: "Keys are encrypted with AES and stored only in your browser. Ever.",
+  },
+  {
+    icon: Rocket,
+    title: "Real-time everywhere",
+    body: "Live prices, live order books, live sparklines. Updated every second.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Institutional security",
+    body: "2FA-ready, device tracking, anti-phishing codes and withdrawal whitelists.",
+  },
+  {
+    icon: Sparkles,
+    title: "Zero clutter",
+    body: "A design tuned for hours of screen time. Bloomberg density, Apple polish.",
+  },
+];
+
+function FeatureGrid() {
+  return (
+    <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
+      <div className="max-w-2xl">
+        <p className="text-xs uppercase tracking-widest text-primary/90 font-medium">Why NovaX</p>
+        <h2 className="mt-2 font-display text-3xl md:text-4xl font-semibold">
+          Everything a trader needs.
+          <br />
+          Nothing they don't.
+        </h2>
+      </div>
+      <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {FEATURES.map((f) => (
+          <div key={f.title} className="glass rounded-xl p-6 hover:bg-white/[.05] transition group">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[image:var(--gradient-brand)]/20 border border-primary/20 text-primary">
+              <f.icon className="h-5 w-5" />
+            </div>
+            <h3 className="mt-4 font-display text-lg font-semibold">{f.title}</h3>
+            <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{f.body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function StatsBand() {
+  const stats = [
+    { k: "$142B+", v: "24h volume across venues" },
+    { k: "500+", v: "listed assets" },
+    { k: "7", v: "supported chains" },
+    { k: "0.01%", v: "maker fee, VIP tier" },
+  ];
+  return (
+    <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="glass-strong rounded-2xl p-8 md:p-10 grid gap-6 md:grid-cols-4 relative overflow-hidden">
+        <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-secondary/30 blur-3xl" />
+        {stats.map((s) => (
+          <div key={s.k}>
+            <p className="font-display text-3xl md:text-4xl font-semibold text-gradient">{s.k}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{s.v}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CTASection() {
+  return (
+    <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
+      <div className="relative overflow-hidden rounded-3xl glass-strong p-10 md:p-16 text-center">
+        <div className="absolute inset-0 -z-10 opacity-70" style={{ backgroundImage: "var(--gradient-hero)" }} />
+        <Zap className="mx-auto h-8 w-8 text-primary" />
+        <h2 className="mt-4 font-display text-3xl md:text-5xl font-semibold">
+          Ready when you are.
+        </h2>
+        <p className="mx-auto mt-4 max-w-lg text-muted-foreground">
+          Generate a wallet in under 10 seconds. Trade on the same page. No email required.
+        </p>
+        <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+          <Link to="/wallet" className="rounded-lg bg-[image:var(--gradient-brand)] px-6 py-3 text-sm font-semibold text-primary-foreground shadow-glow">
+            Create a wallet
+          </Link>
+          <Link to="/markets" className="rounded-lg glass-strong px-6 py-3 text-sm font-semibold">
+            Explore markets
+          </Link>
+        </div>
+      </div>
+    </section>
   );
 }
