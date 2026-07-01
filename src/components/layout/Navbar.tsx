@@ -11,6 +11,7 @@ const NAV = [
   { to: "/markets", label: "Markets" },
   { to: "/trade", label: "Trade" },
   { to: "/wallet", label: "Wallet" },
+  { to: "/news", label: "News" },
 ] as const;
 
 export function Navbar() {

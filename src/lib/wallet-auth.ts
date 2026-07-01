@@ -49,6 +49,20 @@ const SESSION_KEY = "prime:session:v1";
 export interface WalletSession {
   address: string;
   username: string;
+  wallet?: WalletSnapshot;
+}
+
+export interface WalletSnapshot {
+  id: string;
+  label: string;
+  createdAt: number;
+  addresses: Array<{
+    chain: string;
+    name: string;
+    path: string;
+    address: string;
+    standard: "BIP84" | "BIP44";
+  }>;
 }
 
 export function loadSession(): WalletSession | null {

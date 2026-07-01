@@ -11,8 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WalletRouteImport } from './routes/wallet'
 import { Route as TradeRouteImport } from './routes/trade'
+import { Route as NewsRouteImport } from './routes/news'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiNewsRouteImport } from './routes/api/news'
 import { Route as ApiMarketsRouteImport } from './routes/api/markets'
 
 const WalletRoute = WalletRouteImport.update({
@@ -25,6 +27,11 @@ const TradeRoute = TradeRouteImport.update({
   path: '/trade',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NewsRoute = NewsRouteImport.update({
+  id: '/news',
+  path: '/news',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MarketsRoute = MarketsRouteImport.update({
   id: '/markets',
   path: '/markets',
@@ -33,6 +40,11 @@ const MarketsRoute = MarketsRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiNewsRoute = ApiNewsRouteImport.update({
+  id: '/api/news',
+  path: '/api/news',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMarketsRoute = ApiMarketsRouteImport.update({
@@ -44,39 +56,69 @@ const ApiMarketsRoute = ApiMarketsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/markets': typeof MarketsRoute
+  '/news': typeof NewsRoute
   '/trade': typeof TradeRoute
   '/wallet': typeof WalletRoute
   '/api/markets': typeof ApiMarketsRoute
+  '/api/news': typeof ApiNewsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/markets': typeof MarketsRoute
+  '/news': typeof NewsRoute
   '/trade': typeof TradeRoute
   '/wallet': typeof WalletRoute
   '/api/markets': typeof ApiMarketsRoute
+  '/api/news': typeof ApiNewsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/markets': typeof MarketsRoute
+  '/news': typeof NewsRoute
   '/trade': typeof TradeRoute
   '/wallet': typeof WalletRoute
   '/api/markets': typeof ApiMarketsRoute
+  '/api/news': typeof ApiNewsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/markets' | '/trade' | '/wallet' | '/api/markets'
+  fullPaths:
+    | '/'
+    | '/markets'
+    | '/news'
+    | '/trade'
+    | '/wallet'
+    | '/api/markets'
+    | '/api/news'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/markets' | '/trade' | '/wallet' | '/api/markets'
-  id: '__root__' | '/' | '/markets' | '/trade' | '/wallet' | '/api/markets'
+  to:
+    | '/'
+    | '/markets'
+    | '/news'
+    | '/trade'
+    | '/wallet'
+    | '/api/markets'
+    | '/api/news'
+  id:
+    | '__root__'
+    | '/'
+    | '/markets'
+    | '/news'
+    | '/trade'
+    | '/wallet'
+    | '/api/markets'
+    | '/api/news'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   MarketsRoute: typeof MarketsRoute
+  NewsRoute: typeof NewsRoute
   TradeRoute: typeof TradeRoute
   WalletRoute: typeof WalletRoute
   ApiMarketsRoute: typeof ApiMarketsRoute
+  ApiNewsRoute: typeof ApiNewsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -95,6 +137,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TradeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/news': {
+      id: '/news'
+      path: '/news'
+      fullPath: '/news'
+      preLoaderRoute: typeof NewsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/markets': {
       id: '/markets'
       path: '/markets'
@@ -107,6 +156,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/news': {
+      id: '/api/news'
+      path: '/api/news'
+      fullPath: '/api/news'
+      preLoaderRoute: typeof ApiNewsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/markets': {
@@ -122,20 +178,12 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   MarketsRoute: MarketsRoute,
+  NewsRoute: NewsRoute,
   TradeRoute: TradeRoute,
   WalletRoute: WalletRoute,
   ApiMarketsRoute: ApiMarketsRoute,
+  ApiNewsRoute: ApiNewsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

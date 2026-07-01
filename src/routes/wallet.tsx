@@ -8,6 +8,7 @@ import {
   lookupProfileByAddress,
   registerWalletProfile,
   saveSession,
+  type WalletSnapshot,
   walletAddressFor,
 } from "@/lib/wallet-auth";
 import { useWalletSession } from "@/hooks/useWalletSession";
@@ -38,7 +39,7 @@ interface HDWallet {
   id: string;
   label: string;
   createdAt: number;
-  mnemonic: string;
+  mnemonic?: string;
   addresses: ChainAddress[];
 }
 interface WalletLib {
@@ -60,27 +61,48 @@ function WalletPage() {
     import("@/lib/hdwallet").then((m) => setLib(m));
   }, []);
 
+  useEffect(() => {
+    const saved = loadSession()?.wallet;
+    if (!saved) return;
+    setWallets((prev) => (prev.some((w) => w.id === saved.id) ? prev : [saved]));
+    setActiveId((prev) => prev ?? saved.id);
+  }, []);
+
   const active = wallets.find((w) => w.id === activeId) ?? wallets[0];
 
   const onCreate = (label: string) => {
     if (!lib) return;
-    const w = lib.createWallet(label || "Main Wallet");
-    setTab(null);
-    setPending({ wallet: w, mode: "create" });
+    try {
+      const w = lib.createWallet(label || "Main Wallet");
+      setTab(null);
+      setPending({ wallet: w, mode: "create" });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Wallet generation failed");
+    }
   };
 
   const onImport = (mnemonic: string, label: string) => {
     if (!lib) return;
-    const w = lib.importFromMnemonic(mnemonic, label || "Imported Wallet");
-    setTab(null);
-    setPending({ wallet: w, mode: "import" });
+    try {
+      const w = lib.importFromMnemonic(mnemonic, label || "Imported Wallet");
+      setTab(null);
+      setPending({ wallet: w, mode: "import" });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Wallet import failed");
+    }
   };
 
   const finalizeUsername = (w: HDWallet, username: string) => {
+    const snapshot: WalletSnapshot = {
+      id: w.id,
+      label: w.label,
+      createdAt: w.createdAt,
+      addresses: w.addresses,
+    };
     setWallets((prev) => [w, ...prev]);
     setActiveId(w.id);
     setPending(null);
-    saveSession({ address: walletAddressFor(w.addresses), username });
+    saveSession({ address: walletAddressFor(w.addresses), username, wallet: snapshot });
   };
 
   const onDelete = (id: string) => {
@@ -313,7 +335,7 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
     URL.revokeObjectURL(url);
   };
 
-  const words = wallet.mnemonic.split(" ");
+  const words = wallet.mnemonic?.split(" ") ?? [];
 
   return (
     <section className="space-y-4">
@@ -336,7 +358,7 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
           </div>
         </div>
 
-        <div className="mt-6 rounded-xl border border-warning/30 bg-warning/5 p-4">
+        {wallet.mnemonic ? <div className="mt-6 rounded-xl border border-warning/30 bg-warning/5 p-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <KeyRound className="h-4 w-4 text-warning" />
@@ -366,18 +388,20 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
           </div>
           {revealed && (
             <button
-              onClick={() => copy(wallet.mnemonic, "mnemonic")}
+              onClick={() => copy(wallet.mnemonic ?? "", "mnemonic")}
               className="mt-3 inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
             >
               {copied === "mnemonic" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               {copied === "mnemonic" ? "Copied" : "Copy phrase"}
             </button>
           )}
-        </div>
+        </div> : null}
 
         <p className="mt-4 text-xs text-muted-foreground flex items-start gap-2">
           <ShieldCheck className="h-4 w-4 shrink-0 text-success mt-0.5" />
-          This phrase never leaves your device. PrimeCapital cannot recover it if lost.
+          {wallet.mnemonic
+            ? "This phrase never leaves your device. PrimeCapital cannot recover it if lost."
+            : "This wallet is signed in on this device. Re-import the seed phrase to reveal recovery words again."}
         </p>
       </div>
 

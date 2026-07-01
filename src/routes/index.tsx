@@ -1,9 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, BarChart3, Lock, Rocket, ShieldCheck, Sparkles, Wallet2, Zap } from "lucide-react";
 import { MarketTicker } from "@/components/MarketTicker";
 import { Sparkline } from "@/components/Sparkline";
 import { marketsQuery, formatUSD, formatCompact, formatPct } from "@/lib/prices";
+import { fetchBalance, type Balance } from "@/lib/balances";
+import { useWalletSession } from "@/hooks/useWalletSession";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -15,11 +18,93 @@ function HomePage() {
     <>
       <Hero />
       <MarketTicker />
+      <HomeWalletBalances />
       <TrendingSection />
       <FeatureGrid />
       <StatsBand />
       <CTASection />
     </>
+  );
+}
+
+const PRICE_SYMBOL: Record<string, string> = {
+  BTC: "btc",
+  BTC_LEGACY: "btc",
+  ETH: "eth",
+  BNB: "bnb",
+  MATIC: "matic",
+  ARB: "eth",
+  OP: "eth",
+  AVAX: "avax",
+};
+
+function HomeWalletBalances() {
+  const session = useWalletSession();
+  const addresses = session?.wallet?.addresses ?? [];
+  const { data: markets } = useQuery(marketsQuery(100));
+  const [balances, setBalances] = useState<Record<string, Balance | "loading">>({});
+
+  useEffect(() => {
+    if (addresses.length === 0) return;
+    let cancelled = false;
+    setBalances(Object.fromEntries(addresses.map((a) => [a.chain, "loading"])));
+    addresses.forEach((a) => {
+      fetchBalance(a.chain, a.address).then((balance) => {
+        if (!cancelled) setBalances((prev) => ({ ...prev, [a.chain]: balance }));
+      });
+    });
+    return () => { cancelled = true; };
+  }, [addresses]);
+
+  const priceBySymbol = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const coin of markets ?? []) map.set(coin.symbol.toLowerCase(), coin.current_price);
+    return map;
+  }, [markets]);
+
+  if (!session?.wallet || addresses.length === 0) return null;
+
+  const rows = addresses.map((address) => {
+    const balance = balances[address.chain];
+    const amount = balance && balance !== "loading" ? balance.amount : null;
+    const symbol = balance && balance !== "loading" ? balance.symbol : address.chain.replace("BTC_LEGACY", "BTC");
+    const price = priceBySymbol.get(PRICE_SYMBOL[address.chain] ?? symbol.toLowerCase()) ?? 0;
+    const usd = amount == null ? null : amount * price;
+    return { address, amount, symbol, usd, loading: balance === "loading" || balance === undefined };
+  });
+  const total = rows.reduce((sum, row) => sum + (row.usd ?? 0), 0);
+
+  return (
+    <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-10">
+      <div className="glass-strong rounded-2xl p-5 md:p-6">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-primary/90 font-medium">Wallet balance</p>
+            <h2 className="mt-1 font-display text-3xl font-semibold">{formatUSD(total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {session.wallet.label} · <span className="font-semibold text-foreground">{session.username}</span>
+          </p>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {rows.map((row) => (
+            <div key={row.address.chain} className="glass rounded-xl p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">{row.address.name}</p>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{row.symbol}</p>
+                </div>
+                <p className="font-mono text-sm text-right">
+                  {row.loading ? "Loading" : `${(row.amount ?? 0).toFixed(6)}`}
+                </p>
+              </div>
+              <p className="mt-3 truncate font-mono text-[11px] text-muted-foreground">{row.address.address}</p>
+              <p className="mt-2 text-xs text-muted-foreground">{row.usd == null ? "$—" : formatUSD(row.usd, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 

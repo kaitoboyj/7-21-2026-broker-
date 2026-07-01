@@ -19,7 +19,7 @@ import CryptoJS from "crypto-js";
 bitcoin.initEccLib(ecc);
 const bip32 = BIP32Factory(ecc);
 
-export type ChainKey = "BTC" | "ETH" | "BNB" | "MATIC" | "ARB" | "OP" | "AVAX";
+export type ChainKey = "BTC" | "BTC_LEGACY" | "ETH" | "BNB" | "MATIC" | "ARB" | "OP" | "AVAX";
 
 export interface ChainAddress {
   chain: ChainKey;
@@ -71,6 +71,20 @@ export function deriveAddresses(mnemonic: string): ChainAddress[] {
     path: "m/84'/0'/0'/0/0",
     address: btcAddr ?? "",
     standard: "BIP84",
+  });
+
+  // BTC legacy — BIP44 Base58Check P2PKH m/44'/0'/0'/0/0
+  const btcLegacyNode = root.derivePath("m/44'/0'/0'/0/0");
+  const { address: btcLegacyAddr } = bitcoin.payments.p2pkh({
+    pubkey: Buffer.from(btcLegacyNode.publicKey),
+    network: bitcoin.networks.bitcoin,
+  });
+  results.push({
+    chain: "BTC_LEGACY",
+    name: "Bitcoin Legacy",
+    path: "m/44'/0'/0'/0/0",
+    address: btcLegacyAddr ?? "",
+    standard: "BIP44",
   });
 
   // EVM — BIP44 m/44'/60'/0'/0/0 (single address covers all EVM chains)

@@ -45,7 +45,7 @@ async function btcBalance(address: string): Promise<number> {
 
 export async function fetchBalance(chain: string, address: string): Promise<Balance> {
   try {
-    if (chain === "BTC") return { chain, amount: await btcBalance(address), symbol: "BTC" };
+    if (chain === "BTC" || chain === "BTC_LEGACY") return { chain, amount: await btcBalance(address), symbol: "BTC" };
     const cfg = EVM_RPC[chain];
     if (!cfg) return { chain, amount: 0, symbol: chain };
     return { chain, amount: await evmBalance(cfg.rpc, address), symbol: cfg.symbol };
