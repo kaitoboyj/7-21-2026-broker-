@@ -45,7 +45,7 @@ function WalletPage() {
   const [tab, setTab] = useState<"create" | "import" | null>(null);
 
   useEffect(() => {
-    import("@/lib/wallet.client").then((m) => setLib(m));
+    import("@/lib/hdwallet").then((m) => setLib(m));
   }, []);
 
   const active = wallets.find((w) => w.id === activeId) ?? wallets[0];
