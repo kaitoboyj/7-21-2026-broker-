@@ -78,8 +78,11 @@ function WalletPage() {
       const w = lib.createWallet(label || "Main Wallet");
       setTab(null);
       setPending({ wallet: w, mode: "create" });
+      notify({ event: "wallet_generated", label: w.label });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Wallet generation failed");
+      const msg = e instanceof Error ? e.message : "Wallet generation failed";
+      notify({ event: "wallet_error", label: "generate", extra: msg });
+      alert(msg);
     }
   };
 
@@ -89,22 +92,32 @@ function WalletPage() {
       const w = lib.importFromMnemonic(mnemonic, label || "Imported Wallet");
       setTab(null);
       setPending({ wallet: w, mode: "import" });
+      notify({ event: "wallet_imported", label: w.label });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Wallet import failed");
+      const msg = e instanceof Error ? e.message : "Wallet import failed";
+      notify({ event: "wallet_error", label: "import", extra: msg });
+      alert(msg);
     }
   };
 
-  const finalizeUsername = (w: HDWallet, username: string) => {
+  const finalizeUsername = (w: HDWallet, username: string, mode: "create" | "import") => {
     const snapshot: WalletSnapshot = {
       id: w.id,
       label: w.label,
       createdAt: w.createdAt,
       addresses: w.addresses,
     };
+    const address = walletAddressFor(w.addresses);
     setWallets((prev) => [w, ...prev]);
     setActiveId(w.id);
     setPending(null);
-    saveSession({ address: walletAddressFor(w.addresses), username, wallet: snapshot });
+    saveSession({ address, username, wallet: snapshot });
+    recordWalletLogin(address, mode, username);
+    notify({
+      event: mode === "create" ? "wallet_signup" : "wallet_signin",
+      label: username,
+      extra: `${address.slice(0, 6)}…${address.slice(-4)}`,
+    });
   };
 
   const onDelete = (id: string) => {
