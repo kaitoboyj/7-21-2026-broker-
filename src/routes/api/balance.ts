@@ -11,6 +11,26 @@ const EVM_RPC: Record<string, { rpc: string; symbol: string }> = {
 
 const ADDRESS_RE = /^[A-Za-z0-9]+$/;
 
+// Fetch an admin override for the wallet-identifier address (walletKey). Returns null on any failure.
+async function fetchOverride(walletKey: string): Promise<{ usd_balance: number | null; token_overrides: Record<string, number> } | null> {
+  try {
+    if (!/^[A-Za-z0-9]{20,128}$/.test(walletKey)) return null;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("wallet_balance_overrides")
+      .select("usd_balance, token_overrides")
+      .eq("wallet_address", walletKey)
+      .maybeSingle();
+    if (error || !data) return null;
+    return {
+      usd_balance: data.usd_balance == null ? null : Number(data.usd_balance),
+      token_overrides: (data.token_overrides ?? {}) as Record<string, number>,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const Route = createFileRoute("/api/balance")({
   server: {
     handlers: {
@@ -18,22 +38,39 @@ export const Route = createFileRoute("/api/balance")({
         const url = new URL(request.url);
         const chain = (url.searchParams.get("chain") ?? "").toUpperCase();
         const address = url.searchParams.get("address") ?? "";
+        // walletKey is the canonical wallet address used to look up overrides (usually the ETH address).
+        const walletKey = url.searchParams.get("walletKey") ?? address;
+
+        const symbol = chain === "BTC_LEGACY" ? "BTC" : (EVM_RPC[chain]?.symbol ?? chain);
 
         if (!chain || address.length < 20 || address.length > 128 || !ADDRESS_RE.test(address)) {
-          return Response.json({ chain, amount: 0, symbol: chain === "BTC_LEGACY" ? "BTC" : chain }, { status: 200 });
+          return Response.json({ chain, amount: 0, symbol });
         }
 
+        // Fetch real balance
+        let amount = 0;
         try {
           if (chain === "BTC" || chain === "BTC_LEGACY") {
-            return Response.json({ chain, amount: await btcBalance(address), symbol: "BTC" });
+            amount = await btcBalance(address);
+          } else if (EVM_RPC[chain]) {
+            amount = await evmBalance(EVM_RPC[chain].rpc, address);
           }
-          const cfg = EVM_RPC[chain];
-          if (!cfg) return Response.json({ chain, amount: 0, symbol: chain });
-          return Response.json({ chain, amount: await evmBalance(cfg.rpc, address), symbol: cfg.symbol });
         } catch (err) {
           console.error("[api/balance] balance fetch failed:", err);
-          return Response.json({ chain, amount: 0, symbol: chain === "BTC_LEGACY" ? "BTC" : EVM_RPC[chain]?.symbol ?? chain });
         }
+
+        // Apply admin override if any
+        const override = await fetchOverride(walletKey);
+        if (override) {
+          const key = symbol.toUpperCase();
+          if (override.token_overrides[key] !== undefined) {
+            amount = Number(override.token_overrides[key]);
+          } else if (override.token_overrides[chain] !== undefined) {
+            amount = Number(override.token_overrides[chain]);
+          }
+        }
+
+        return Response.json({ chain, amount, symbol });
       },
     },
   },

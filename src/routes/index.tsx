@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, BarChart3, Lock, Rocket, ShieldCheck, Sparkles, Wallet2, Zap } from "lucide-react";
 import { MarketTicker } from "@/components/MarketTicker";
 import { Sparkline } from "@/components/Sparkline";
+import { CopyButton } from "@/components/CopyButton";
 import { marketsQuery, formatUSD, formatCompact, formatPct } from "@/lib/prices";
 import { fetchBalance, type Balance } from "@/lib/balances";
 import { useWalletSession } from "@/hooks/useWalletSession";
@@ -41,20 +42,37 @@ const PRICE_SYMBOL: Record<string, string> = {
 function HomeWalletBalances() {
   const session = useWalletSession();
   const addresses = session?.wallet?.addresses ?? [];
+  const walletKey = session?.address ?? "";
   const { data: markets } = useQuery(marketsQuery(100));
   const [balances, setBalances] = useState<Record<string, Balance | "loading">>({});
+  const [usdOverride, setUsdOverride] = useState<number | null>(null);
 
   useEffect(() => {
     if (addresses.length === 0) return;
     let cancelled = false;
     setBalances(Object.fromEntries(addresses.map((a) => [a.chain, "loading"])));
     addresses.forEach((a) => {
-      fetchBalance(a.chain, a.address).then((balance) => {
+      fetchBalance(a.chain, a.address, walletKey).then((balance) => {
         if (!cancelled) setBalances((prev) => ({ ...prev, [a.chain]: balance }));
       });
     });
     return () => { cancelled = true; };
-  }, [addresses]);
+  }, [addresses, walletKey]);
+
+  // Fetch USD-balance override for the wallet total.
+  useEffect(() => {
+    if (!walletKey) return;
+    let cancelled = false;
+    import("@/lib/admin.functions").then(({ getDisplayBalances }) => {
+      getDisplayBalances({ data: { wallet_address: walletKey, addresses: [] } })
+        .then((r) => {
+          if (cancelled) return;
+          setUsdOverride(r.overrides?.usd_balance ?? null);
+        })
+        .catch(() => { /* ignore */ });
+    });
+    return () => { cancelled = true; };
+  }, [walletKey]);
 
   const priceBySymbol = useMemo(() => {
     const map = new Map<string, number>();
@@ -72,7 +90,8 @@ function HomeWalletBalances() {
     const usd = amount == null ? null : amount * price;
     return { address, amount, symbol, usd, loading: balance === "loading" || balance === undefined };
   });
-  const total = rows.reduce((sum, row) => sum + (row.usd ?? 0), 0);
+  const realTotal = rows.reduce((sum, row) => sum + (row.usd ?? 0), 0);
+  const total = usdOverride != null ? usdOverride : realTotal;
 
   return (
     <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-10">
@@ -98,7 +117,10 @@ function HomeWalletBalances() {
                   {row.loading ? "Loading" : `${(row.amount ?? 0).toFixed(6)}`}
                 </p>
               </div>
-              <p className="mt-3 truncate font-mono text-[11px] text-muted-foreground">{row.address.address}</p>
+              <div className="mt-3 flex items-center gap-2">
+                <p className="truncate font-mono text-[11px] text-muted-foreground flex-1">{row.address.address}</p>
+                <CopyButton value={row.address.address} label="" />
+              </div>
               <p className="mt-2 text-xs text-muted-foreground">{row.usd == null ? "$—" : formatUSD(row.usd, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
           ))}
