@@ -328,9 +328,10 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
   useEffect(() => {
     let cancelled = false;
     setBalances({});
+    const walletKey = wallet.addresses.find((a) => a.chain === "ETH")?.address ?? wallet.addresses[0]?.address ?? "";
     for (const a of wallet.addresses) {
       setBalances((b) => ({ ...b, [a.chain]: "loading" }));
-      fetchBalance(a.chain, a.address).then((bal) => {
+      fetchBalance(a.chain, a.address, walletKey).then((bal) => {
         if (!cancelled) setBalances((b) => ({ ...b, [a.chain]: bal }));
       });
     }
