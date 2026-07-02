@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      wallet_balance_overrides: {
+        Row: {
+          created_at: string
+          id: string
+          note: string | null
+          token_overrides: Json
+          updated_at: string
+          usd_balance: number | null
+          wallet_address: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          token_overrides?: Json
+          updated_at?: string
+          usd_balance?: number | null
+          wallet_address: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          token_overrides?: Json
+          updated_at?: string
+          usd_balance?: number | null
+          wallet_address?: string
+        }
+        Relationships: []
+      }
       wallet_logins: {
         Row: {
           created_at: string
