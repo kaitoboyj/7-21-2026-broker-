@@ -6,6 +6,7 @@ import {
   isUsernameTaken,
   loadSession,
   lookupProfileByAddress,
+  recordWalletLogin,
   registerWalletProfile,
   saveSession,
   type WalletSnapshot,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/wallet-auth";
 import { useWalletSession } from "@/hooks/useWalletSession";
 import { fetchBalance, type Balance } from "@/lib/balances";
+import { notify } from "@/lib/notify";
 
 // NOTE: All wallet code is client-only. We dynamic-import to keep the SSR bundle clean.
 
