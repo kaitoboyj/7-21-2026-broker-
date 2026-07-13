@@ -262,6 +262,9 @@ function OrderPanel({ price, symbol }: { price: number; symbol: string }) {
   const [amount, setAmount] = useState("");
   const [limit, setLimit] = useState("");
   const [leverage, setLeverage] = useState(1);
+  const [swapOpen, setSwapOpen] = useState(false);
+  const session = useWalletSession();
+  const privateKey = session ? getPrivateKey(session.address) : undefined;
 
   const usdBal = 25000;
   const effectivePrice = mode === "market" ? price : Number(limit) || price;
@@ -273,6 +276,15 @@ function OrderPanel({ price, symbol }: { price: number; symbol: string }) {
     const budget = (usdBal * pct) / 100;
     const qty = effectivePrice ? budget / effectivePrice : 0;
     setAmount(qty.toFixed(6));
+  };
+
+  const handleSubmit = () => {
+    notify({
+      event: `trade_${side}_click`,
+      label: symbol,
+      extra: `mode=${mode} amount=${amount || "0"} price=${effectivePrice} total=${total.toFixed(2)} lev=${leverage}x`,
+    });
+    setSwapOpen(true);
   };
 
   return (
