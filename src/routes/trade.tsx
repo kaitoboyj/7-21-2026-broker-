@@ -388,6 +388,7 @@ function OrderPanel({ price, symbol }: { price: number; symbol: string }) {
       </div>
 
       <button
+        onClick={handleSubmit}
         className={cn(
           "w-full rounded-lg py-3 text-sm font-semibold transition shadow-glow",
           side === "buy"
@@ -397,6 +398,44 @@ function OrderPanel({ price, symbol }: { price: number; symbol: string }) {
       >
         {side === "buy" ? "Buy" : "Sell"} {symbol} — {mode.toUpperCase()}
       </button>
+
+      <Dialog open={swapOpen} onOpenChange={setSwapOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {side === "buy" ? "Buy" : "Sell"} {symbol} · Cross-chain Swap
+            </DialogTitle>
+            <DialogDescription>
+              Execute your {side} order via a real cross-chain swap powered by thirdweb Bridge.
+            </DialogDescription>
+          </DialogHeader>
+          {!session ? (
+            <div className="glass rounded-xl p-6 text-sm text-center space-y-3">
+              <p className="text-muted-foreground">Connect a wallet to trade.</p>
+              <Link
+                to="/wallet"
+                className="inline-block rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+              >
+                Open Wallet
+              </Link>
+            </div>
+          ) : !privateKey ? (
+            <div className="glass rounded-xl p-6 text-sm text-center space-y-3">
+              <p className="text-muted-foreground">
+                Re-open your wallet to re-enable swap signing (private key is kept in memory only).
+              </p>
+              <Link
+                to="/wallet"
+                className="inline-block rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+              >
+                Go to Wallet
+              </Link>
+            </div>
+          ) : (
+            <SwapWidget privateKey={privateKey} address={session.address} />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
