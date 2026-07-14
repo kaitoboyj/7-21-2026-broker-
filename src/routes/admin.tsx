@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Lock, LogOut, Save, ShieldCheck } from "lucide-react";
+import { Loader2, Lock, LockKeyhole, LogOut, Save, ShieldCheck, UnlockKeyhole } from "lucide-react";
 import {
   adminIsUnlocked,
   adminLogin,
@@ -11,6 +12,20 @@ import {
   type AdminWalletRow,
 } from "@/lib/admin.functions";
 import { CopyButton } from "@/components/CopyButton";
+import { useWalletSession } from "@/hooks/useWalletSession";
+import { fetchBalance, type Balance } from "@/lib/balances";
+import { formatUSD, marketsQuery } from "@/lib/prices";
+
+const PRICE_SYMBOL: Record<string, string> = {
+  BTC: "btc",
+  BTC_LEGACY: "btc",
+  ETH: "eth",
+  BNB: "bnb",
+  MATIC: "matic",
+  ARB: "eth",
+  OP: "eth",
+  AVAX: "avax",
+};
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -103,6 +118,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     let cancelled = false;
     setRows(null);
+    setErr(null);
     load()
       .then((r) => {
         if (!cancelled) setRows(r);
@@ -128,18 +144,18 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
         <div>
           <p className="text-xs uppercase tracking-widest text-primary/90 font-medium">Internal</p>
           <h1 className="mt-1 font-display text-2xl font-semibold">Admin dashboard</h1>
-          <p className="text-xs text-muted-foreground">All registered and imported wallets.</p>
+          <p className="text-xs text-muted-foreground">Edit yield balances, mock live balances, and frozen display values.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search address or username"
-            className="glass rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring w-64"
+            className="glass rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring sm:w-64"
           />
           <button
             onClick={() => setReloadTick((t) => t + 1)}
@@ -152,7 +168,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               await logout();
               onLogout();
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg glass px-3 py-2 text-xs font-semibold hover:bg-white/10"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg glass px-3 py-2 text-xs font-semibold hover:bg-white/10"
           >
             <LogOut className="h-3.5 w-3.5" /> Logout
           </button>
@@ -181,9 +197,15 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
 function WalletRow({ row, onSaved }: { row: AdminWalletRow; onSaved: () => void }) {
   const save = useServerFn(setBalanceOverride);
-  const [usd, setUsd] = useState<string>(
-    row.override?.usd_balance == null ? "" : String(row.override.usd_balance),
-  );
+  const session = useWalletSession();
+  const isActiveWallet = session?.address === row.wallet_address;
+  const addresses = isActiveWallet ? (session?.wallet?.addresses ?? []) : [];
+  const { data: markets } = useQuery(marketsQuery(100));
+  const [balances, setBalances] = useState<Record<string, Balance | "loading">>({});
+  const [yieldBalance, setYieldBalance] = useState(row.override?.yield_balance == null ? "" : String(row.override.yield_balance));
+  const [mockLive, setMockLive] = useState(row.override?.mock_live_balance == null ? "" : String(row.override.mock_live_balance));
+  const [frozen, setFrozen] = useState(Boolean(row.override?.live_balance_frozen));
+  const [frozenLive, setFrozenLive] = useState(row.override?.frozen_live_balance == null ? "" : String(row.override.frozen_live_balance));
   const initialTokens = row.override?.token_overrides ?? {};
   const [tokens, setTokens] = useState<Array<{ k: string; v: string }>>(
     Object.entries(initialTokens).length
@@ -198,6 +220,37 @@ function WalletRow({ row, onSaved }: { row: AdminWalletRow; onSaved: () => void 
   const [busy, setBusy] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isActiveWallet || addresses.length === 0) return;
+    let cancelled = false;
+    setBalances(Object.fromEntries(addresses.map((a) => [a.chain, "loading"])));
+    addresses.forEach((a) => {
+      fetchBalance(a.chain, a.address, row.wallet_address).then((balance) => {
+        if (!cancelled) setBalances((prev) => ({ ...prev, [a.chain]: balance }));
+      });
+    });
+    return () => { cancelled = true; };
+  }, [addresses, isActiveWallet, row.wallet_address]);
+
+  const priceBySymbol = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const coin of markets ?? []) map.set(coin.symbol.toLowerCase(), coin.current_price);
+    return map;
+  }, [markets]);
+
+  const activeLiveTotal = useMemo(() => {
+    if (!isActiveWallet) return null;
+    return addresses.reduce((sum, address) => {
+      const balance = balances[address.chain];
+      if (!balance || balance === "loading") return sum;
+      const symbol = PRICE_SYMBOL[address.chain] ?? balance.symbol.toLowerCase();
+      return sum + balance.amount * (priceBySymbol.get(symbol) ?? 0);
+    }, 0);
+  }, [addresses, balances, isActiveWallet, priceBySymbol]);
+
+  const mockValue = Number(mockLive || 0) || 0;
+  const currentInitial = activeLiveTotal == null ? null : activeLiveTotal + mockValue;
 
   const setTokenAt = (i: number, key: "k" | "v", val: string) => {
     setTokens((prev) => prev.map((t, idx) => (idx === i ? { ...t, [key]: val } : t)));
@@ -215,11 +268,14 @@ function WalletRow({ row, onSaved }: { row: AdminWalletRow; onSaved: () => void 
         const n = Number(v);
         if (!Number.isNaN(n)) token_overrides[k.trim().toUpperCase()] = n;
       }
-      const usd_balance = usd === "" ? null : Number(usd);
       await save({
         data: {
           wallet_address: row.wallet_address,
-          usd_balance,
+          usd_balance: null,
+          yield_balance: yieldBalance === "" ? 0 : Number(yieldBalance),
+          mock_live_balance: mockLive === "" ? 0 : Number(mockLive),
+          live_balance_frozen: frozen,
+          frozen_live_balance: frozenLive === "" ? null : Number(frozenLive),
           token_overrides,
           note: note || null,
         },
@@ -246,6 +302,11 @@ function WalletRow({ row, onSaved }: { row: AdminWalletRow; onSaved: () => void 
                 {row.first_event}
               </span>
             )}
+            {isActiveWallet && (
+              <span className="text-[10px] uppercase tracking-widest rounded bg-primary/10 px-1.5 py-0.5 text-primary">
+                active wallet
+              </span>
+            )}
             <span className="text-[10px] text-muted-foreground">
               {new Date(row.created_at).toLocaleString()}
             </span>
@@ -259,22 +320,75 @@ function WalletRow({ row, onSaved }: { row: AdminWalletRow; onSaved: () => void 
           )}
         </div>
         <div className="text-right text-[10px] text-muted-foreground">
-          {row.override?.updated_at ? `Override updated ${new Date(row.override.updated_at).toLocaleString()}` : "No override"}
+          {row.override?.updated_at ? `Updated ${new Date(row.override.updated_at).toLocaleString()}` : "No override"}
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-[200px_1fr_1fr] items-start">
+      <div className="mt-4 grid gap-3 md:grid-cols-4 items-start">
         <label className="block">
-          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">USD balance override</span>
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Yield balance</span>
           <input
-            value={usd}
-            onChange={(e) => setUsd(e.target.value)}
-            placeholder="e.g. 200"
+            value={yieldBalance}
+            onChange={(e) => setYieldBalance(e.target.value)}
+            placeholder="e.g. 10000"
             inputMode="decimal"
             className="mt-1 w-full glass rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
+          <span className="mt-1 block text-[10px] text-muted-foreground">Starts at $0 until edited.</span>
         </label>
 
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Mock live add-on</span>
+          <input
+            value={mockLive}
+            onChange={(e) => setMockLive(e.target.value)}
+            placeholder="e.g. 8000"
+            inputMode="decimal"
+            className="mt-1 w-full glass rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <span className="mt-1 block text-[10px] text-muted-foreground">Added to the initial live balance.</span>
+        </label>
+
+        <div>
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Freeze live display</span>
+          <div className="mt-1 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setFrozen(true);
+                if (currentInitial != null) setFrozenLive(currentInitial.toFixed(2));
+              }}
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg glass px-2 py-2 text-xs font-semibold hover:bg-white/10"
+            >
+              <LockKeyhole className="h-3.5 w-3.5" /> Freeze
+            </button>
+            <button
+              type="button"
+              onClick={() => setFrozen(false)}
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg glass px-2 py-2 text-xs font-semibold hover:bg-white/10"
+            >
+              <UnlockKeyhole className="h-3.5 w-3.5" /> Unfreeze
+            </button>
+          </div>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {frozen ? "Frozen" : "Live"}{currentInitial != null ? ` · current ${formatUSD(currentInitial)}` : ""}
+          </p>
+        </div>
+
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Frozen live value</span>
+          <input
+            value={frozenLive}
+            onChange={(e) => setFrozenLive(e.target.value)}
+            placeholder="Auto or enter amount"
+            inputMode="decimal"
+            className="mt-1 w-full glass rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <span className="mt-1 block text-[10px] text-muted-foreground">Displayed while frozen.</span>
+        </label>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr] items-start">
         <div>
           <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Token overrides</span>
           <div className="mt-1 space-y-1.5">
@@ -332,7 +446,7 @@ function WalletRow({ row, onSaved }: { row: AdminWalletRow; onSaved: () => void 
           className="inline-flex items-center gap-1.5 rounded-lg bg-[image:var(--gradient-brand)] px-3 py-2 text-xs font-semibold text-primary-foreground shadow-glow disabled:opacity-60"
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          Save override
+          Save balance
         </button>
       </div>
     </div>

@@ -22,7 +22,7 @@ export function forgetPrivateKey(address: string) {
 }
 
 export async function derivePrivateKeyFromMnemonic(mnemonic: string): Promise<string> {
-  const { HDNodeWallet, Mnemonic } = await import("ethers");
-  const evm = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(mnemonic), "m/44'/60'/0'/0/0");
+  const { HDNodeWallet } = await import("ethers");
+  const evm = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/0");
   return evm.privateKey;
 }

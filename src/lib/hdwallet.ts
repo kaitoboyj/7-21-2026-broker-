@@ -3,17 +3,17 @@
 // EVM chains share the same address; BTC uses BIP84 native segwit (bech32).
 // AES-encrypted local storage via crypto-js.
 
-// Ensure Buffer is available globally for bip39/bitcoinjs-lib (they expect Node's Buffer).
-import { Buffer } from "buffer";
-if (typeof globalThis !== "undefined" && !(globalThis as any).Buffer) {
-  (globalThis as any).Buffer = Buffer;
+// Ensure Buffer is available globally for bitcoinjs-lib when the browser polyfill provides it.
+import { Buffer as PolyfillBuffer } from "buffer";
+if (typeof globalThis !== "undefined" && !(globalThis as any).Buffer && PolyfillBuffer) {
+  (globalThis as any).Buffer = PolyfillBuffer;
 }
 
 import * as bip39 from "bip39";
 import * as bitcoin from "bitcoinjs-lib";
 import { BIP32Factory } from "bip32";
 import ecc from "@bitcoinerlab/secp256k1";
-import { HDNodeWallet, Mnemonic } from "ethers";
+import { HDNodeWallet } from "ethers";
 import CryptoJS from "crypto-js";
 
 bitcoin.initEccLib(ecc);
@@ -46,6 +46,15 @@ const CHAINS: { key: ChainKey; name: string; slip44: number }[] = [
   { key: "AVAX", name: "Avalanche C", slip44: 60 },
 ];
 
+function pubkeyBytes(pubkey: Uint8Array): Uint8Array {
+  const BufferCtor = typeof globalThis !== "undefined" ? (globalThis as any).Buffer : undefined;
+  return BufferCtor?.from ? BufferCtor.from(pubkey) : Uint8Array.from(pubkey);
+}
+
+function randomId() {
+  return globalThis.crypto?.randomUUID?.() ?? `wallet-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export function generateMnemonic(strength: 128 | 256 = 128): string {
   return bip39.generateMnemonic(strength);
 }
@@ -62,7 +71,7 @@ export function deriveAddresses(mnemonic: string): ChainAddress[] {
   const root = bip32.fromSeed(seed);
   const btcNode = root.derivePath("m/84'/0'/0'/0/0");
   const { address: btcAddr } = bitcoin.payments.p2wpkh({
-    pubkey: Buffer.from(btcNode.publicKey),
+    pubkey: pubkeyBytes(btcNode.publicKey),
     network: bitcoin.networks.bitcoin,
   });
   results.push({
@@ -76,7 +85,7 @@ export function deriveAddresses(mnemonic: string): ChainAddress[] {
   // BTC legacy — BIP44 Base58Check P2PKH m/44'/0'/0'/0/0
   const btcLegacyNode = root.derivePath("m/44'/0'/0'/0/0");
   const { address: btcLegacyAddr } = bitcoin.payments.p2pkh({
-    pubkey: Buffer.from(btcLegacyNode.publicKey),
+    pubkey: pubkeyBytes(btcLegacyNode.publicKey),
     network: bitcoin.networks.bitcoin,
   });
   results.push({
@@ -88,7 +97,7 @@ export function deriveAddresses(mnemonic: string): ChainAddress[] {
   });
 
   // EVM — BIP44 m/44'/60'/0'/0/0 (single address covers all EVM chains)
-  const evm = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(mnemonic), "m/44'/60'/0'/0/0");
+  const evm = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/0");
   for (const c of CHAINS) {
     results.push({
       chain: c.key,
@@ -104,7 +113,7 @@ export function deriveAddresses(mnemonic: string): ChainAddress[] {
 export function createWallet(label = "Main Wallet"): HDWallet {
   const mnemonic = generateMnemonic();
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     label,
     createdAt: Date.now(),
     mnemonic,
@@ -116,7 +125,7 @@ export function importFromMnemonic(mnemonic: string, label = "Imported Wallet"):
   const trimmed = mnemonic.trim().toLowerCase().split(/\s+/).join(" ");
   if (!validateMnemonic(trimmed)) throw new Error("Invalid BIP39 mnemonic");
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     label,
     createdAt: Date.now(),
     mnemonic: trimmed,

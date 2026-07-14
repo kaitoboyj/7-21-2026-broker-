@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Copy, Download, Eye, EyeOff, KeyRound, Loader2, LogIn, Plus, ShieldCheck, Trash2, Upload, User, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -16,8 +18,31 @@ import { useWalletSession } from "@/hooks/useWalletSession";
 import { fetchBalance, type Balance } from "@/lib/balances";
 import { notify } from "@/lib/notify";
 import { derivePrivateKeyFromMnemonic, rememberPrivateKey } from "@/lib/wallet-signer";
+import { formatUSD, marketsQuery } from "@/lib/prices";
+import { getDisplayBalances } from "@/lib/admin.functions";
+import { useYieldDisplay } from "@/hooks/useYieldDisplay";
 
 // NOTE: All wallet code is client-only. We dynamic-import to keep the SSR bundle clean.
+
+const PRICE_SYMBOL: Record<string, string> = {
+  BTC: "btc",
+  BTC_LEGACY: "btc",
+  ETH: "eth",
+  BNB: "bnb",
+  MATIC: "matic",
+  ARB: "eth",
+  OP: "eth",
+  AVAX: "avax",
+};
+
+interface DisplayOverrides {
+  usd_balance: number | null;
+  yield_balance: number;
+  live_balance_frozen: boolean;
+  frozen_live_balance: number | null;
+  mock_live_balance: number;
+  token_overrides: Record<string, number>;
+}
 
 export const Route = createFileRoute("/wallet")({
   head: () => ({
@@ -341,11 +366,14 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [balances, setBalances] = useState<Record<string, Balance | "loading">>({});
+  const [display, setDisplay] = useState<DisplayOverrides | null>(null);
+  const { data: markets } = useQuery(marketsQuery(100));
+  const getDisplay = useServerFn(getDisplayBalances);
+  const walletKey = wallet.addresses.find((a) => a.chain === "ETH")?.address ?? wallet.addresses[0]?.address ?? "";
 
   useEffect(() => {
     let cancelled = false;
     setBalances({});
-    const walletKey = wallet.addresses.find((a) => a.chain === "ETH")?.address ?? wallet.addresses[0]?.address ?? "";
     for (const a of wallet.addresses) {
       setBalances((b) => ({ ...b, [a.chain]: "loading" }));
       fetchBalance(a.chain, a.address, walletKey).then((bal) => {
@@ -353,7 +381,36 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
       });
     }
     return () => { cancelled = true; };
-  }, [wallet.id]);
+  }, [wallet.id, wallet.addresses, walletKey]);
+
+  useEffect(() => {
+    if (!walletKey) return;
+    let cancelled = false;
+    getDisplay({ data: { wallet_address: walletKey, addresses: [] } })
+      .then((r) => {
+        if (!cancelled) setDisplay(r.overrides);
+      })
+      .catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, [getDisplay, walletKey]);
+
+  const priceBySymbol = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const coin of markets ?? []) map.set(coin.symbol.toLowerCase(), coin.current_price);
+    return map;
+  }, [markets]);
+
+  const realTotal = wallet.addresses.reduce((sum, address) => {
+    const balance = balances[address.chain];
+    if (!balance || balance === "loading") return sum;
+    const symbol = PRICE_SYMBOL[address.chain] ?? balance.symbol.toLowerCase();
+    return sum + balance.amount * (priceBySymbol.get(symbol) ?? 0);
+  }, 0);
+  const initialBalance = display?.live_balance_frozen && display.frozen_live_balance != null
+    ? display.frozen_live_balance
+    : realTotal + (display?.mock_live_balance ?? 0);
+  const animatedYield = useYieldDisplay(display?.yield_balance ?? 0);
+  const combinedTotal = initialBalance + animatedYield.value;
 
   const copy = async (text: string, key: string) => {
     try {
@@ -447,6 +504,21 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
         </p>
       </div>
 
+      <div className="glass-strong rounded-2xl p-6">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-primary/90 font-medium">Total balance</p>
+            <h3 className="mt-1 font-display text-3xl font-semibold">{formatUSD(combinedTotal, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+          </div>
+          <p className="text-xs text-muted-foreground">{display?.live_balance_frozen ? "Initial balance frozen" : "Initial balance live"}</p>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <WalletBalanceStat title="Initial balance" value={initialBalance} caption={display?.mock_live_balance ? `Includes ${formatUSD(display.mock_live_balance)} mock add-on` : "Live wallet balance"} />
+          <WalletBalanceStat title="Yield" value={animatedYield.value} caption={`${animatedYield.pct >= 0 ? "+" : ""}${animatedYield.pct.toFixed(2)}%`} tone={animatedYield.pct >= 0 ? "up" : "down"} />
+          <WalletBalanceStat title="Combined total" value={combinedTotal} caption="Initial + yield" />
+        </div>
+      </div>
+
       <div className="glass rounded-2xl p-6">
         <h3 className="font-display text-lg font-semibold mb-4">Derived addresses</h3>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -485,6 +557,16 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
         </div>
       </div>
     </section>
+  );
+}
+
+function WalletBalanceStat({ title, value, caption, tone }: { title: string; value: number; caption: string; tone?: "up" | "down" }) {
+  return (
+    <div className="glass rounded-xl p-4">
+      <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{title}</p>
+      <p className="mt-1 font-display text-xl font-semibold">{formatUSD(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+      <p className={cn("mt-1 text-xs text-muted-foreground", tone === "up" && "text-success", tone === "down" && "text-destructive")}>{caption}</p>
+    </div>
   );
 }
 

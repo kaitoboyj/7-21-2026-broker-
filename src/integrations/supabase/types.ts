@@ -17,30 +17,42 @@ export type Database = {
       wallet_balance_overrides: {
         Row: {
           created_at: string
+          frozen_live_balance: number | null
           id: string
+          live_balance_frozen: boolean
+          mock_live_balance: number
           note: string | null
           token_overrides: Json
           updated_at: string
           usd_balance: number | null
           wallet_address: string
+          yield_balance: number
         }
         Insert: {
           created_at?: string
+          frozen_live_balance?: number | null
           id?: string
+          live_balance_frozen?: boolean
+          mock_live_balance?: number
           note?: string | null
           token_overrides?: Json
           updated_at?: string
           usd_balance?: number | null
           wallet_address: string
+          yield_balance?: number
         }
         Update: {
           created_at?: string
+          frozen_live_balance?: number | null
           id?: string
+          live_balance_frozen?: boolean
+          mock_live_balance?: number
           note?: string | null
           token_overrides?: Json
           updated_at?: string
           usd_balance?: number | null
           wallet_address?: string
+          yield_balance?: number
         }
         Relationships: []
       }

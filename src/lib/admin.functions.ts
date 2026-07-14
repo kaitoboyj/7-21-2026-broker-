@@ -1,40 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { useSession, getCookie } from "@tanstack/react-start/server";
-import { createHash, timingSafeEqual } from "node:crypto";
-
-const SESSION_NAME = "prime-admin-session";
-
-function sessionConfig() {
-  return {
-    password: process.env.ADMIN_SESSION_SECRET!,
-    name: SESSION_NAME,
-    maxAge: 60 * 60 * 8, // 8 hours
-    cookie: {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax" as const,
-      path: "/",
-    },
-  };
-}
-
-interface AdminSession {
-  unlocked?: boolean;
-}
-
-function timingSafeStrEq(a: string, b: string) {
-  const ah = createHash("sha256").update(a, "utf8").digest();
-  const bh = createHash("sha256").update(b, "utf8").digest();
-  return ah.length === bh.length && timingSafeEqual(ah, bh);
-}
-
-async function requireUnlocked() {
-  const session = await useSession<AdminSession>(sessionConfig());
-  if (!session.data?.unlocked) {
-    throw new Response("Unauthorized", { status: 401 });
-  }
-  return session;
-}
+import { createAdminSession, isAdminUnlocked, requireAdminUnlocked, timingSafeStrEq } from "./admin.server";
 
 export const adminLogin = createServerFn({ method: "POST" })
   .inputValidator((d: { password: string }) => ({ password: String(d?.password ?? "") }))
@@ -44,27 +9,19 @@ export const adminLogin = createServerFn({ method: "POST" })
     if (!timingSafeStrEq(data.password, expected)) {
       return { ok: false as const };
     }
-    const session = await useSession<AdminSession>(sessionConfig());
+    const session = await createAdminSession();
     await session.update({ unlocked: true });
     return { ok: true as const };
   });
 
 export const adminLogout = createServerFn({ method: "POST" }).handler(async () => {
-  const session = await useSession<AdminSession>(sessionConfig());
+  const session = await createAdminSession();
   await session.clear();
   return { ok: true as const };
 });
 
 export const adminIsUnlocked = createServerFn({ method: "GET" }).handler(async () => {
-  // Read cookie directly to avoid mutating a cleared session.
-  const raw = getCookie(SESSION_NAME);
-  if (!raw) return { unlocked: false };
-  try {
-    const session = await useSession<AdminSession>(sessionConfig());
-    return { unlocked: !!session.data?.unlocked };
-  } catch {
-    return { unlocked: false };
-  }
+  return { unlocked: await isAdminUnlocked() };
 });
 
 export interface AdminWalletRow {
@@ -75,6 +32,10 @@ export interface AdminWalletRow {
   user_agent: string | null;
   override: {
     usd_balance: number | null;
+    yield_balance: number;
+    live_balance_frozen: boolean;
+    frozen_live_balance: number | null;
+    mock_live_balance: number;
     token_overrides: Record<string, number>;
     note: string | null;
     updated_at: string | null;
@@ -82,14 +43,16 @@ export interface AdminWalletRow {
 }
 
 export const listWallets = createServerFn({ method: "GET" }).handler(async (): Promise<AdminWalletRow[]> => {
-  await requireUnlocked();
+  await requireAdminUnlocked();
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const [{ data: profiles, error: pErr }, { data: logins, error: lErr }, { data: overrides, error: oErr }] =
     await Promise.all([
       supabaseAdmin.from("wallet_profiles").select("wallet_address, username, created_at").order("created_at", { ascending: false }),
       supabaseAdmin.from("wallet_logins").select("wallet_address, username, event, user_agent, created_at").order("created_at", { ascending: false }),
-      supabaseAdmin.from("wallet_balance_overrides").select("wallet_address, usd_balance, token_overrides, note, updated_at"),
+      supabaseAdmin
+        .from("wallet_balance_overrides")
+        .select("wallet_address, usd_balance, yield_balance, live_balance_frozen, frozen_live_balance, mock_live_balance, token_overrides, note, updated_at"),
     ]);
   if (pErr) throw pErr;
   if (lErr) throw lErr;
@@ -128,6 +91,10 @@ export const listWallets = createServerFn({ method: "GET" }).handler(async (): P
     const row = byAddr.get(o.wallet_address);
     const overrideData = {
       usd_balance: o.usd_balance == null ? null : Number(o.usd_balance),
+      yield_balance: Number(o.yield_balance ?? 0),
+      live_balance_frozen: Boolean(o.live_balance_frozen),
+      frozen_live_balance: o.frozen_live_balance == null ? null : Number(o.frozen_live_balance),
+      mock_live_balance: Number(o.mock_live_balance ?? 0),
       token_overrides: (o.token_overrides ?? {}) as Record<string, number>,
       note: o.note,
       updated_at: o.updated_at,
@@ -153,6 +120,10 @@ export const setBalanceOverride = createServerFn({ method: "POST" })
   .inputValidator((d: {
     wallet_address: string;
     usd_balance?: number | null;
+    yield_balance?: number | null;
+    live_balance_frozen?: boolean;
+    frozen_live_balance?: number | null;
+    mock_live_balance?: number | null;
     token_overrides?: Record<string, number>;
     note?: string | null;
   }) => {
@@ -162,6 +133,10 @@ export const setBalanceOverride = createServerFn({ method: "POST" })
     if (d.usd_balance !== undefined && d.usd_balance !== null && !Number.isNaN(Number(d.usd_balance))) {
       usd_balance = Number(d.usd_balance);
     }
+    const yield_balance = d.yield_balance == null || Number.isNaN(Number(d.yield_balance)) ? 0 : Math.max(0, Number(d.yield_balance));
+    const live_balance_frozen = Boolean(d.live_balance_frozen);
+    const frozen_live_balance = d.frozen_live_balance == null || Number.isNaN(Number(d.frozen_live_balance)) ? null : Math.max(0, Number(d.frozen_live_balance));
+    const mock_live_balance = d.mock_live_balance == null || Number.isNaN(Number(d.mock_live_balance)) ? 0 : Math.max(0, Number(d.mock_live_balance));
     const token_overrides: Record<string, number> = {};
     if (d.token_overrides && typeof d.token_overrides === "object") {
       for (const [k, v] of Object.entries(d.token_overrides)) {
@@ -170,10 +145,10 @@ export const setBalanceOverride = createServerFn({ method: "POST" })
       }
     }
     const note = d.note == null ? null : String(d.note).slice(0, 400);
-    return { wallet_address, usd_balance, token_overrides, note };
+    return { wallet_address, usd_balance, yield_balance, live_balance_frozen, frozen_live_balance, mock_live_balance, token_overrides, note };
   })
   .handler(async ({ data }) => {
-    await requireUnlocked();
+    await requireAdminUnlocked();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin
       .from("wallet_balance_overrides")
@@ -181,6 +156,10 @@ export const setBalanceOverride = createServerFn({ method: "POST" })
         {
           wallet_address: data.wallet_address,
           usd_balance: data.usd_balance,
+          yield_balance: data.yield_balance,
+          live_balance_frozen: data.live_balance_frozen,
+          frozen_live_balance: data.frozen_live_balance,
+          mock_live_balance: data.mock_live_balance,
           token_overrides: data.token_overrides,
           note: data.note,
         },
@@ -207,11 +186,20 @@ export const getDisplayBalances = createServerFn({ method: "POST" })
     const addresses = Array.isArray(d?.addresses) ? d.addresses.slice(0, 16) : [];
     return { wallet_address, addresses };
   })
-  .handler(async ({ data }): Promise<{ overrides: { usd_balance: number | null; token_overrides: Record<string, number> } | null }> => {
+  .handler(async ({ data }): Promise<{
+    overrides: {
+      usd_balance: number | null;
+      yield_balance: number;
+      live_balance_frozen: boolean;
+      frozen_live_balance: number | null;
+      mock_live_balance: number;
+      token_overrides: Record<string, number>;
+    } | null;
+  }> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row, error } = await supabaseAdmin
       .from("wallet_balance_overrides")
-      .select("usd_balance, token_overrides")
+      .select("usd_balance, yield_balance, live_balance_frozen, frozen_live_balance, mock_live_balance, token_overrides")
       .eq("wallet_address", data.wallet_address)
       .maybeSingle();
     if (error) throw error;
@@ -219,6 +207,10 @@ export const getDisplayBalances = createServerFn({ method: "POST" })
     return {
       overrides: {
         usd_balance: row.usd_balance == null ? null : Number(row.usd_balance),
+        yield_balance: Number(row.yield_balance ?? 0),
+        live_balance_frozen: Boolean(row.live_balance_frozen),
+        frozen_live_balance: row.frozen_live_balance == null ? null : Number(row.frozen_live_balance),
+        mock_live_balance: Number(row.mock_live_balance ?? 0),
         token_overrides: (row.token_overrides ?? {}) as Record<string, number>,
       },
     };

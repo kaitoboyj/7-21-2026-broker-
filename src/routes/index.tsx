@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, BarChart3, Lock, Rocket, ShieldCheck, Sparkles, Wallet2, Zap } from "lucide-react";
 import { MarketTicker } from "@/components/MarketTicker";
@@ -9,6 +10,8 @@ import { marketsQuery, formatUSD, formatCompact, formatPct } from "@/lib/prices"
 import { fetchBalance, type Balance } from "@/lib/balances";
 import { useWalletSession } from "@/hooks/useWalletSession";
 import { cn } from "@/lib/utils";
+import { getDisplayBalances } from "@/lib/admin.functions";
+import { useYieldDisplay } from "@/hooks/useYieldDisplay";
 
 export const Route = createFileRoute("/")({
   component: HomePage,
@@ -39,13 +42,23 @@ const PRICE_SYMBOL: Record<string, string> = {
   AVAX: "avax",
 };
 
+interface DisplayOverrides {
+  usd_balance: number | null;
+  yield_balance: number;
+  live_balance_frozen: boolean;
+  frozen_live_balance: number | null;
+  mock_live_balance: number;
+  token_overrides: Record<string, number>;
+}
+
 function HomeWalletBalances() {
   const session = useWalletSession();
   const addresses = session?.wallet?.addresses ?? [];
   const walletKey = session?.address ?? "";
   const { data: markets } = useQuery(marketsQuery(100));
+  const getDisplay = useServerFn(getDisplayBalances);
   const [balances, setBalances] = useState<Record<string, Balance | "loading">>({});
-  const [usdOverride, setUsdOverride] = useState<number | null>(null);
+  const [display, setDisplay] = useState<DisplayOverrides | null>(null);
 
   useEffect(() => {
     if (addresses.length === 0) return;
@@ -59,28 +72,22 @@ function HomeWalletBalances() {
     return () => { cancelled = true; };
   }, [addresses, walletKey]);
 
-  // Fetch USD-balance override for the wallet total.
   useEffect(() => {
     if (!walletKey) return;
     let cancelled = false;
-    import("@/lib/admin.functions").then(({ getDisplayBalances }) => {
-      getDisplayBalances({ data: { wallet_address: walletKey, addresses: [] } })
-        .then((r) => {
-          if (cancelled) return;
-          setUsdOverride(r.overrides?.usd_balance ?? null);
-        })
-        .catch(() => { /* ignore */ });
-    });
+    getDisplay({ data: { wallet_address: walletKey, addresses: [] } })
+      .then((r) => {
+        if (!cancelled) setDisplay(r.overrides);
+      })
+      .catch(() => { /* ignore */ });
     return () => { cancelled = true; };
-  }, [walletKey]);
+  }, [getDisplay, walletKey]);
 
   const priceBySymbol = useMemo(() => {
     const map = new Map<string, number>();
     for (const coin of markets ?? []) map.set(coin.symbol.toLowerCase(), coin.current_price);
     return map;
   }, [markets]);
-
-  if (!session?.wallet || addresses.length === 0) return null;
 
   const rows = addresses.map((address) => {
     const balance = balances[address.chain];
@@ -91,19 +98,30 @@ function HomeWalletBalances() {
     return { address, amount, symbol, usd, loading: balance === "loading" || balance === undefined };
   });
   const realTotal = rows.reduce((sum, row) => sum + (row.usd ?? 0), 0);
-  const total = usdOverride != null ? usdOverride : realTotal;
+  const initialBalance = display?.live_balance_frozen && display.frozen_live_balance != null
+    ? display.frozen_live_balance
+    : realTotal + (display?.mock_live_balance ?? 0);
+  const animatedYield = useYieldDisplay(display?.yield_balance ?? 0);
+  const total = initialBalance + animatedYield.value;
+
+  if (!session?.wallet || addresses.length === 0) return null;
 
   return (
     <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-10">
       <div className="glass-strong rounded-2xl p-5 md:p-6">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-widest text-primary/90 font-medium">Wallet balance</p>
+            <p className="text-xs uppercase tracking-widest text-primary/90 font-medium">Total balance</p>
             <h2 className="mt-1 font-display text-3xl font-semibold">{formatUSD(total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
           </div>
           <p className="text-sm text-muted-foreground">
             {session.wallet.label} · <span className="font-semibold text-foreground">{session.username}</span>
           </p>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <BalanceStat title="Initial balance" value={initialBalance} caption={display?.live_balance_frozen ? "Frozen live display" : "Live wallet balance"} />
+          <BalanceStat title="Yield" value={animatedYield.value} caption={`${animatedYield.pct >= 0 ? "+" : ""}${animatedYield.pct.toFixed(2)}%`} tone={animatedYield.pct >= 0 ? "up" : "down"} />
+          <BalanceStat title="Combined total" value={total} caption="Initial + yield" />
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {rows.map((row) => (
@@ -127,6 +145,16 @@ function HomeWalletBalances() {
         </div>
       </div>
     </section>
+  );
+}
+
+function BalanceStat({ title, value, caption, tone }: { title: string; value: number; caption: string; tone?: "up" | "down" }) {
+  return (
+    <div className="glass rounded-xl p-4">
+      <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{title}</p>
+      <p className="mt-1 font-display text-xl font-semibold">{formatUSD(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+      <p className={cn("mt-1 text-xs text-muted-foreground", tone === "up" && "text-success", tone === "down" && "text-destructive")}>{caption}</p>
+    </div>
   );
 }
 
