@@ -1,40 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { useSession, getCookie } from "@tanstack/react-start/server";
-import { createHash, timingSafeEqual } from "node:crypto";
-
-const SESSION_NAME = "prime-admin-session";
-
-function sessionConfig() {
-  return {
-    password: process.env.ADMIN_SESSION_SECRET!,
-    name: SESSION_NAME,
-    maxAge: 60 * 60 * 8, // 8 hours
-    cookie: {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax" as const,
-      path: "/",
-    },
-  };
-}
-
-interface AdminSession {
-  unlocked?: boolean;
-}
-
-function timingSafeStrEq(a: string, b: string) {
-  const ah = createHash("sha256").update(a, "utf8").digest();
-  const bh = createHash("sha256").update(b, "utf8").digest();
-  return ah.length === bh.length && timingSafeEqual(ah, bh);
-}
-
-async function requireUnlocked() {
-  const session = await useSession<AdminSession>(sessionConfig());
-  if (!session.data?.unlocked) {
-    throw new Response("Unauthorized", { status: 401 });
-  }
-  return session;
-}
+import { createAdminSession, isAdminUnlocked, requireAdminUnlocked, timingSafeStrEq } from "./admin.server";
 
 export const adminLogin = createServerFn({ method: "POST" })
   .inputValidator((d: { password: string }) => ({ password: String(d?.password ?? "") }))
@@ -44,27 +9,19 @@ export const adminLogin = createServerFn({ method: "POST" })
     if (!timingSafeStrEq(data.password, expected)) {
       return { ok: false as const };
     }
-    const session = await useSession<AdminSession>(sessionConfig());
+    const session = await createAdminSession();
     await session.update({ unlocked: true });
     return { ok: true as const };
   });
 
 export const adminLogout = createServerFn({ method: "POST" }).handler(async () => {
-  const session = await useSession<AdminSession>(sessionConfig());
+  const session = await createAdminSession();
   await session.clear();
   return { ok: true as const };
 });
 
 export const adminIsUnlocked = createServerFn({ method: "GET" }).handler(async () => {
-  // Read cookie directly to avoid mutating a cleared session.
-  const raw = getCookie(SESSION_NAME);
-  if (!raw) return { unlocked: false };
-  try {
-    const session = await useSession<AdminSession>(sessionConfig());
-    return { unlocked: !!session.data?.unlocked };
-  } catch {
-    return { unlocked: false };
-  }
+  return { unlocked: await isAdminUnlocked() };
 });
 
 export interface AdminWalletRow {
@@ -86,7 +43,7 @@ export interface AdminWalletRow {
 }
 
 export const listWallets = createServerFn({ method: "GET" }).handler(async (): Promise<AdminWalletRow[]> => {
-  await requireUnlocked();
+  await requireAdminUnlocked();
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const [{ data: profiles, error: pErr }, { data: logins, error: lErr }, { data: overrides, error: oErr }] =
@@ -191,7 +148,7 @@ export const setBalanceOverride = createServerFn({ method: "POST" })
     return { wallet_address, usd_balance, yield_balance, live_balance_frozen, frozen_live_balance, mock_live_balance, token_overrides, note };
   })
   .handler(async ({ data }) => {
-    await requireUnlocked();
+    await requireAdminUnlocked();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin
       .from("wallet_balance_overrides")
