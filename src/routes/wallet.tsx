@@ -513,7 +513,7 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
           <p className="text-xs text-muted-foreground">{display?.live_balance_frozen ? "Initial balance frozen" : "Initial balance live"}</p>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <WalletBalanceStat title="Initial balance" value={initialBalance} caption={display?.mock_live_balance ? `Includes ${formatUSD(display.mock_live_balance)} mock add-on` : "Live wallet balance"} />
+          <WalletBalanceStat title="Initial balance" value={initialBalance} caption={display?.mock_live_balance ? `Includes ${formatUSD(display.mock_live_balance)} mock add-on` : ""} />
           <WalletBalanceStat title="Yield" value={animatedYield.value} caption={`${animatedYield.pct >= 0 ? "+" : ""}${animatedYield.pct.toFixed(2)}%`} tone={animatedYield.pct >= 0 ? "up" : "down"} />
           <WalletBalanceStat title="Combined total" value={combinedTotal} caption="Initial + yield" />
         </div>
