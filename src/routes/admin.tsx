@@ -107,6 +107,17 @@ function LoginPanel({ onUnlock }: { onUnlock: () => void }) {
   );
 }
 
+function normalizeAdminWalletRows(value: unknown): AdminWalletRow[] {
+  if (Array.isArray(value)) return value as AdminWalletRow[];
+  if (value && typeof value === "object") {
+    const payload = value as { data?: unknown; rows?: unknown; result?: unknown };
+    if (Array.isArray(payload.data)) return payload.data as AdminWalletRow[];
+    if (Array.isArray(payload.rows)) return payload.rows as AdminWalletRow[];
+    if (Array.isArray(payload.result)) return payload.result as AdminWalletRow[];
+  }
+  return [];
+}
+
 function Dashboard({ onLogout }: { onLogout: () => void }) {
   const load = useServerFn(listWallets);
   const logout = useServerFn(adminLogout);
@@ -121,7 +132,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     setErr(null);
     load()
       .then((r) => {
-        if (!cancelled) setRows(r);
+        if (!cancelled) setRows(normalizeAdminWalletRows(r));
       })
       .catch((e) => {
         if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");

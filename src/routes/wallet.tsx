@@ -79,6 +79,7 @@ interface WalletLib {
 
 function WalletPage() {
   const [lib, setLib] = useState<WalletLib | null>(null);
+  const [walletToolError, setWalletToolError] = useState<string | null>(null);
   const [wallets, setWallets] = useState<HDWallet[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tab, setTab] = useState<"create" | "import" | null>(null);
@@ -86,7 +87,18 @@ function WalletPage() {
   const session = useWalletSession();
 
   useEffect(() => {
-    import("@/lib/hdwallet").then((m) => setLib(m));
+    let cancelled = false;
+    import("@/lib/buffer-polyfill")
+      .then(() => import("@/lib/hdwallet"))
+      .then((m) => {
+        if (!cancelled) setLib(m);
+      })
+      .catch((e) => {
+        if (!cancelled) setWalletToolError(e instanceof Error ? e.message : "Wallet tools failed to load");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -219,12 +231,12 @@ function WalletPage() {
 
       {tab === "create" && (
         <Modal onClose={() => setTab(null)} title="Create a new wallet">
-          {lib ? <CreateForm onSubmit={onCreate} /> : <WalletToolsLoading />}
+          {lib ? <CreateForm onSubmit={onCreate} /> : walletToolError ? <WalletToolsUnavailable message={walletToolError} /> : <WalletToolsLoading />}
         </Modal>
       )}
       {tab === "import" && (
         <Modal onClose={() => setTab(null)} title="Import a wallet">
-          {lib ? <ImportForm onSubmit={onImport} validate={lib.validateMnemonic} /> : <WalletToolsLoading />}
+          {lib ? <ImportForm onSubmit={onImport} validate={lib.validateMnemonic} /> : walletToolError ? <WalletToolsUnavailable message={walletToolError} /> : <WalletToolsLoading />}
         </Modal>
       )}
       {pending && (
@@ -245,6 +257,14 @@ function WalletToolsLoading() {
     <div className="flex items-center justify-center gap-2 rounded-lg glass p-4 text-sm text-muted-foreground">
       <Loader2 className="h-4 w-4 animate-spin text-primary" />
       Loading wallet tools
+    </div>
+  );
+}
+
+function WalletToolsUnavailable({ message }: { message: string }) {
+  return (
+    <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+      Wallet tools could not load. Refresh the page and try again. {message ? `(${message})` : ""}
     </div>
   );
 }
