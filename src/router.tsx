@@ -1,3 +1,5 @@
+// Install Buffer on globalThis before any crypto lib chunk loads.
+import "./lib/buffer-polyfill";
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
