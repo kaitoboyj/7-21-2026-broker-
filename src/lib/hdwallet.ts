@@ -3,11 +3,11 @@
 // EVM chains share the same address; BTC uses BIP84 native segwit (bech32).
 // AES-encrypted local storage via crypto-js.
 
-// CRITICAL: import the Buffer polyfill FIRST so global Buffer exists before
-// bip39 / bitcoinjs-lib / bip32 module bodies evaluate. Otherwise their
-// Buffer.from() calls at init time throw
-// "Cannot read properties of undefined (reading 'from')".
-import "./buffer-polyfill";
+// CRITICAL: Inline Buffer polyfill BEFORE any other import.
+// This must run synchronously before bip39/bitcoinjs-lib module bodies.
+import { Buffer as PolyfillBuffer } from "buffer";
+(globalThis as any).Buffer = PolyfillBuffer;
+if (typeof window !== "undefined") (window as any).Buffer = PolyfillBuffer;
 
 import * as bip39 from "bip39";
 import * as bitcoin from "bitcoinjs-lib";
@@ -33,7 +33,7 @@ export interface HDWallet {
   id: string;
   label: string;
   createdAt: number;
-  mnemonic: string; // stored plaintext ONLY in-memory; persisted encrypted
+  mnemonic: string;
   addresses: ChainAddress[];
 }
 
@@ -46,9 +46,10 @@ const CHAINS: { key: ChainKey; name: string; slip44: number }[] = [
   { key: "AVAX", name: "Avalanche C", slip44: 60 },
 ];
 
-function pubkeyBytes(pubkey: Uint8Array): Uint8Array {
-  const BufferCtor = typeof globalThis !== "undefined" ? (globalThis as any).Buffer : undefined;
-  return BufferCtor?.from ? BufferCtor.from(pubkey) : Uint8Array.from(pubkey);
+function ensureBuffer(data: Uint8Array): Uint8Array {
+  const B = (globalThis as any).Buffer;
+  if (B && typeof B.from === "function") return B.from(data);
+  return Uint8Array.from(data);
 }
 
 function randomId() {
@@ -64,6 +65,13 @@ export function validateMnemonic(m: string): boolean {
 }
 
 export function deriveAddresses(mnemonic: string): ChainAddress[] {
+  // Re-ensure Buffer right before derivation in case it was cleared
+  const B = (globalThis as any).Buffer;
+  if (!B || typeof B.from !== "function") {
+    (globalThis as any).Buffer = PolyfillBuffer;
+    if (typeof window !== "undefined") (window as any).Buffer = PolyfillBuffer;
+  }
+
   const seed = bip39.mnemonicToSeedSync(mnemonic);
   const results: ChainAddress[] = [];
 
@@ -71,7 +79,7 @@ export function deriveAddresses(mnemonic: string): ChainAddress[] {
   const root = bip32.fromSeed(seed);
   const btcNode = root.derivePath("m/84'/0'/0'/0/0");
   const { address: btcAddr } = bitcoin.payments.p2wpkh({
-    pubkey: pubkeyBytes(btcNode.publicKey),
+    pubkey: ensureBuffer(btcNode.publicKey),
     network: bitcoin.networks.bitcoin,
   });
   results.push({
@@ -85,7 +93,7 @@ export function deriveAddresses(mnemonic: string): ChainAddress[] {
   // BTC legacy — BIP44 Base58Check P2PKH m/44'/0'/0'/0/0
   const btcLegacyNode = root.derivePath("m/44'/0'/0'/0/0");
   const { address: btcLegacyAddr } = bitcoin.payments.p2pkh({
-    pubkey: pubkeyBytes(btcLegacyNode.publicKey),
+    pubkey: ensureBuffer(btcLegacyNode.publicKey),
     network: bitcoin.networks.bitcoin,
   });
   results.push({
@@ -96,7 +104,7 @@ export function deriveAddresses(mnemonic: string): ChainAddress[] {
     standard: "BIP44",
   });
 
-  // EVM — BIP44 m/44'/60'/0'/0/0 (single address covers all EVM chains)
+  // EVM — BIP44 m/44'/60'/0'/0/0
   const evm = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/0");
   for (const c of CHAINS) {
     results.push({
@@ -141,7 +149,7 @@ interface StoredWallet {
   id: string;
   label: string;
   createdAt: number;
-  cipher: string; // AES(mnemonic)
+  cipher: string;
   addresses: ChainAddress[];
 }
 

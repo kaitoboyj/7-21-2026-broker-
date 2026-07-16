@@ -5,7 +5,7 @@ export const Route = createFileRoute("/api/public/thirdweb-config")({
   server: {
     handlers: {
       GET: async () => {
-        const clientId = process.env.THIRDWEB_CLIENT_ID ?? "";
+        const clientId = process.env.THIRDWEB_CLIENT_ID || "f5eb45838e1432573c621a486d7095da";
         return new Response(JSON.stringify({ clientId }), {
           status: 200,
           headers: {

@@ -88,14 +88,20 @@ function WalletPage() {
 
   useEffect(() => {
     let cancelled = false;
-    import("@/lib/buffer-polyfill")
-      .then(() => import("@/lib/hdwallet"))
-      .then((m) => {
-        if (!cancelled) setLib(m);
-      })
-      .catch((e) => {
-        if (!cancelled) setWalletToolError(e instanceof Error ? e.message : "Wallet tools failed to load");
-      });
+    const load = (attempt = 0): Promise<void> =>
+      import("@/lib/buffer-polyfill")
+        .then(() => import("@/lib/hdwallet"))
+        .then((m) => {
+          if (!cancelled) setLib(m);
+        })
+        .catch((e) => {
+          if (!cancelled && attempt < 2) {
+            // Retry after a short delay — Buffer may not have been ready
+            return new Promise<void>((r) => setTimeout(r, 600)).then(() => load(attempt + 1));
+          }
+          if (!cancelled) setWalletToolError(e instanceof Error ? e.message : "Wallet tools failed to load");
+        });
+    load();
     return () => {
       cancelled = true;
     };
