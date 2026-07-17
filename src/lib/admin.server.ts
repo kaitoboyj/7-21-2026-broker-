@@ -55,7 +55,7 @@ export async function createAdminSession() {
 
 export async function requireAdminUnlocked() {
   const session = await createAdminSession();
-  if (!session.data?.unlocked) throw new Response("Unauthorized", { status: 401 });
+  if (!session.data?.unlocked) throw new Error("admin_locked");
   return session;
 }
 
