@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useWalletSession } from "@/hooks/useWalletSession";
 import { clearSession } from "@/lib/wallet-auth";
+import { forgetPrivateKey } from "@/lib/wallet-signer";
 import logoAsset from "@/assets/primecapital-logo.png.asset.json";
 
 const NAV = [
@@ -20,6 +21,12 @@ export function Navbar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [open, setOpen] = useState(false);
   const session = useWalletSession();
+
+  const signOut = () => {
+    if (session?.address) forgetPrivateKey(session.address);
+    clearSession();
+    setOpen(false);
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full">
@@ -65,7 +72,7 @@ export function Navbar() {
                   <span className="text-foreground">{session.username}</span>
                 </span>
                 <button
-                  onClick={clearSession}
+                  onClick={signOut}
                   className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                   aria-label="Sign out"
                 >
@@ -106,13 +113,22 @@ export function Navbar() {
                 {item.label}
               </Link>
             ))}
-            <Link
-              to="/wallet"
-              onClick={() => setOpen(false)}
-              className="mt-2 rounded-md bg-[image:var(--gradient-brand)] px-4 py-2 text-center text-sm font-semibold text-primary-foreground"
-            >
-              Get started
-            </Link>
+            {session ? (
+              <button
+                onClick={signOut}
+                className="mt-2 rounded-md bg-[image:var(--gradient-brand)] px-4 py-2 text-center text-sm font-semibold text-primary-foreground"
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link
+                to="/wallet"
+                onClick={() => setOpen(false)}
+                className="mt-2 rounded-md bg-[image:var(--gradient-brand)] px-4 py-2 text-center text-sm font-semibold text-primary-foreground"
+              >
+                Get started
+              </Link>
+            )}
           </nav>
         </div>
       )}

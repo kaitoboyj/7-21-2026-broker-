@@ -1,9 +1,9 @@
 import {
   lookupProfileByAddressFn,
   isUsernameTakenFn,
+  recordWalletLoginFn,
   registerWalletProfileFn,
 } from "@/lib/wallet-profile.functions";
-import { supabase } from "@/integrations/supabase/client";
 
 // The canonical wallet identifier is the derived Ethereum address (first EVM entry).
 export function walletAddressFor(addresses: { chain: string; address: string }[]): string {
@@ -26,23 +26,25 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
   return taken;
 }
 
-export async function registerWalletProfile(address: string, username: string): Promise<WalletProfileRow> {
-  const { profile } = await registerWalletProfileFn({ data: { wallet_address: address, username } });
+export async function registerWalletProfile(address: string, username: string, signature: string): Promise<WalletProfileRow> {
+  const { profile } = await registerWalletProfileFn({ data: { wallet_address: address, username, signature } });
   return profile;
 }
 
 export async function recordWalletLogin(
   address: string,
   event: "create" | "import" | "signin",
+  signature: string,
   username?: string,
 ) {
   try {
-    await supabase.from("wallet_logins").insert({
+    await recordWalletLoginFn({ data: {
       wallet_address: address,
-      username: username ?? null,
+      username: username ?? undefined,
       event,
       user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 240) : null,
-    });
+      signature,
+    } });
   } catch {
     /* best-effort logging */
   }

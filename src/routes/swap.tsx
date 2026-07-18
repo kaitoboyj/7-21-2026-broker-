@@ -19,7 +19,7 @@ export const Route = createFileRoute("/swap")({
 
 function SwapPage() {
   const session = useWalletSession();
-  const [pk, setPk] = useState<string | undefined>(undefined);
+  const [pk, setPk] = useState<string | null | undefined>(undefined);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -29,8 +29,31 @@ function SwapPage() {
   }, []);
 
   useEffect(() => {
-    if (session?.address) setPk(getPrivateKey(session.address));
-    else setPk(undefined);
+    let cancelled = false;
+    if (!session?.address) {
+      setPk(null);
+      return;
+    }
+
+    setPk(undefined);
+    const started = Date.now();
+    const refresh = () => {
+      const key = getPrivateKey(session.address);
+      if (cancelled) return;
+      if (key) {
+        setPk(key);
+        return;
+      }
+      if (Date.now() - started < 2500) {
+        window.setTimeout(refresh, 250);
+      } else {
+        setPk(null);
+      }
+    };
+    refresh();
+    return () => {
+      cancelled = true;
+    };
   }, [session?.address, tick]);
 
   return (
@@ -49,6 +72,10 @@ function SwapPage() {
 
       {!session ? (
         <NeedsWallet reason="signin" />
+      ) : pk === undefined ? (
+        <div className="glass rounded-xl p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          Loading wallet signer…
+        </div>
       ) : !pk ? (
         <NeedsWallet reason="rehydrate" />
       ) : (

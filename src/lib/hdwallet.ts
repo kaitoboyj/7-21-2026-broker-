@@ -3,18 +3,27 @@
 // EVM chains share the same address; BTC uses BIP84 native segwit (bech32).
 // AES-encrypted local storage via crypto-js.
 
-// CRITICAL: Inline Buffer polyfill BEFORE any other import.
-// This must run synchronously before bip39/bitcoinjs-lib module bodies.
+// CRITICAL: install Buffer BEFORE loading bip39/bitcoinjs/bip32.
+// Static ESM imports are evaluated before this module body, so the crypto
+// libraries are loaded with top-level await after the polyfill is installed.
 import { Buffer as PolyfillBuffer } from "buffer";
 (globalThis as any).Buffer = PolyfillBuffer;
 if (typeof window !== "undefined") (window as any).Buffer = PolyfillBuffer;
+if (typeof self !== "undefined") (self as any).Buffer = PolyfillBuffer;
 
-import * as bip39 from "bip39";
-import * as bitcoin from "bitcoinjs-lib";
-import { BIP32Factory } from "bip32";
-import ecc from "@bitcoinerlab/secp256k1";
-import { HDNodeWallet } from "ethers";
-import CryptoJS from "crypto-js";
+const [bip39, bitcoin, bip32Module, eccModule, ethersModule, cryptoJsModule] = await Promise.all([
+  import("bip39"),
+  import("bitcoinjs-lib"),
+  import("bip32"),
+  import("@bitcoinerlab/secp256k1"),
+  import("ethers"),
+  import("crypto-js"),
+]);
+
+const { BIP32Factory } = bip32Module;
+const ecc = eccModule.default;
+const { HDNodeWallet } = ethersModule;
+const CryptoJS = cryptoJsModule.default;
 
 bitcoin.initEccLib(ecc);
 const bip32 = BIP32Factory(ecc);
