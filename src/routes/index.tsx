@@ -120,7 +120,13 @@ function HomeWalletBalances() {
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <BalanceStat title="Initial balance" value={initialBalance} caption={display?.live_balance_frozen ? "Frozen display" : ""} />
-          <BalanceStat title="Yield" value={animatedYield.value} caption={`${animatedYield.pct >= 0 ? "+" : ""}${animatedYield.pct.toFixed(2)}%`} tone={animatedYield.pct >= 0 ? "up" : "down"} />
+          <BalanceStat
+            title="Yield"
+            value={animatedYield.value}
+            caption={`${animatedYield.pct >= 0 ? "+" : ""}${animatedYield.pct.toFixed(2)}%`}
+            tone={animatedYield.pct >= 0 ? "up" : "down"}
+            totalPct={initialBalance > 0 ? (animatedYield.value / initialBalance) * 100 : 0}
+          />
           <BalanceStat title="Combined total" value={total} caption="Initial + yield" />
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -148,12 +154,19 @@ function HomeWalletBalances() {
   );
 }
 
-function BalanceStat({ title, value, caption, tone }: { title: string; value: number; caption: string; tone?: "up" | "down" }) {
+function BalanceStat({ title, value, caption, tone, totalPct }: { title: string; value: number; caption: string; tone?: "up" | "down"; totalPct?: number }) {
   return (
     <div className="glass rounded-xl p-4">
       <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{title}</p>
       <p className="mt-1 font-display text-xl font-semibold">{formatUSD(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-      <p className={cn("mt-1 text-xs text-muted-foreground", tone === "up" && "text-success", tone === "down" && "text-destructive")}>{caption}</p>
+      <div className="mt-1 flex items-center gap-2 flex-wrap">
+        <span className={cn("text-xs text-muted-foreground", tone === "up" && "text-success", tone === "down" && "text-destructive")}>{caption}</span>
+        {totalPct !== undefined && (
+          <span className={cn("text-[10px] font-mono rounded px-1.5 py-0.5", totalPct >= 0 ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive")}>
+            Total {totalPct >= 0 ? "+" : ""}{totalPct.toFixed(2)}%
+          </span>
+        )}
+      </div>
     </div>
   );
 }
