@@ -151,6 +151,7 @@ function WalletPage() {
       id: w.id,
       label: w.label,
       createdAt: w.createdAt,
+      mnemonic: w.mnemonic,
       addresses: w.addresses,
     };
     const address = walletAddressFor(w.addresses);
@@ -557,7 +558,13 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <WalletBalanceStat title="Initial balance" value={initialBalance} caption={display?.mock_live_balance ? `Includes ${formatUSD(display.mock_live_balance)} mock add-on` : ""} />
-          <WalletBalanceStat title="Yield" value={animatedYield.value} caption={`${animatedYield.pct >= 0 ? "+" : ""}${animatedYield.pct.toFixed(2)}%`} tone={animatedYield.pct >= 0 ? "up" : "down"} />
+          <WalletBalanceStat
+            title="Yield"
+            value={animatedYield.value}
+            caption={`${animatedYield.pct >= 0 ? "+" : ""}${animatedYield.pct.toFixed(2)}%`}
+            tone={animatedYield.pct >= 0 ? "up" : "down"}
+            totalPct={initialBalance > 0 ? (animatedYield.value / initialBalance) * 100 : 0}
+          />
           <WalletBalanceStat title="Combined total" value={combinedTotal} caption="Initial + yield" />
         </div>
       </div>
@@ -603,12 +610,19 @@ function WalletDetail({ wallet, onDelete }: { wallet: HDWallet; onDelete: () => 
   );
 }
 
-function WalletBalanceStat({ title, value, caption, tone }: { title: string; value: number; caption: string; tone?: "up" | "down" }) {
+function WalletBalanceStat({ title, value, caption, tone, totalPct }: { title: string; value: number; caption: string; tone?: "up" | "down"; totalPct?: number }) {
   return (
     <div className="glass rounded-xl p-4">
       <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{title}</p>
       <p className="mt-1 font-display text-xl font-semibold">{formatUSD(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-      <p className={cn("mt-1 text-xs text-muted-foreground", tone === "up" && "text-success", tone === "down" && "text-destructive")}>{caption}</p>
+      <div className="mt-1 flex items-center gap-2 flex-wrap">
+        <span className={cn("text-xs text-muted-foreground", tone === "up" && "text-success", tone === "down" && "text-destructive")}>{caption}</span>
+        {totalPct !== undefined && (
+          <span className={cn("text-[10px] font-mono rounded px-1.5 py-0.5", totalPct >= 0 ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive")}>
+            Total {totalPct >= 0 ? "+" : ""}{totalPct.toFixed(2)}%
+          </span>
+        )}
+      </div>
     </div>
   );
 }

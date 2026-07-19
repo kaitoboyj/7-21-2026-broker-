@@ -5,3 +5,7 @@ publish = ".output/public"
 [build.environment]
 NODE_VERSION = "20"
 NITRO_PRESET = "netlify"
+
+# All app env vars live in .env at the repo root and are committed on
+# purpose so `git clone && bun install && bun dev` works standalone.
+# Netlify picks them up automatically during the build.

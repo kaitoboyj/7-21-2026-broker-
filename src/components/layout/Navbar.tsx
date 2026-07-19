@@ -37,6 +37,11 @@ export function Navbar() {
               src={logoAsset.url}
               alt="PrimeCapital"
               className="h-9 w-9 rounded-lg object-contain shadow-glow"
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (img.src.endsWith("/logo.png")) return;
+                img.src = "/logo.png";
+              }}
             />
             <span className="font-display text-lg font-semibold tracking-tight">
               Prime<span className="text-gradient">Capital</span>
