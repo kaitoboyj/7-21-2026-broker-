@@ -64,6 +64,7 @@ export interface WalletSnapshot {
   id: string;
   label: string;
   createdAt: number;
+  mnemonic?: string;
   addresses: Array<{
     chain: string;
     name: string;
