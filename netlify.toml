@@ -4,7 +4,6 @@ publish = ".output/public"
 
 [build.environment]
 NODE_VERSION = "20"
-NITRO_PRESET = "netlify"
 NODE_OPTIONS = "--max-old-space-size=4096"
 
 [build.processing]
@@ -12,15 +11,6 @@ skip_processing = false
 
 [build.cache]
 paths = ["node_modules/.cache"]
-
-[functions]
-node_bundler = "esbuild"
-included_files = ["node_modules/**"]
-
-[[redirects]]
-from = "/*"
-to = "/index.html"
-status = 200
 
 [[headers]]
 for = "/*"
