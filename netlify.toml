@@ -4,7 +4,12 @@ publish = ".output/public"
 
 [build.environment]
 NODE_VERSION = "20"
+NITRO_PRESET = "netlify"
 NODE_OPTIONS = "--max-old-space-size=4096"
+
+[functions]
+node_bundler = "esbuild"
+included_files = ["node_modules/**"]
 
 [[headers]]
 for = "/*"
