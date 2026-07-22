@@ -12,6 +12,12 @@ skip_processing = false
 [build.cache]
 paths = ["node_modules/.cache"]
 
+[[redirects]]
+from = "/*"
+to = "/.netlify/functions/server"
+status = 200
+force = true
+
 [[headers]]
 for = "/*"
 [headers.values]
